@@ -3,10 +3,15 @@
 
 (function () {
   const $ = (sel) => document.querySelector(sel);
+  const T = (k, f) => (window.I18N?.t ? window.I18N.t(k, f) : f);
   const intFmt = new Intl.NumberFormat('ko-KR');
   const LAST_CWD_KEY = 'kimi.lastCwd';
+  const DEFAULT_MODEL_KEY = 'kimi.defaultModel';
 
   let refreshTimer = null;
+  let unsubscribeEvents = null;   // guard against double-subscribe on re-entry
+  let chatOptionsInited = false;  // ChatOptions.init() runs exactly once
+  let updateReady = false;        // a downloaded update is waiting to install
 
   const App = {
     state: {
@@ -45,6 +50,8 @@
       App.showView('chat');
       window.Sidebar?.render?.(App.state);
       updateChatHeader();
+      refreshChatOptions(id);
+      notifyPanelSession(id);
       try {
         const messages = await window.kimi.getMessages(id);
         if (App.state.activeId !== id) return; // user switched meanwhile
@@ -62,6 +69,12 @@
       updateAbortButton();
     },
 
+    /** Search-result entry point: open a session and jump to a message. */
+    async openSessionAtMessage(sessionId, messageId) {
+      await App.selectSession(sessionId);
+      window.Chat?.scrollToMessage?.(messageId);
+    },
+
     /** Enter draft mode: no active session; one is created lazily on first send. */
     startNewChat() {
       App.state.activeId = null;
@@ -69,6 +82,8 @@
       window.Sidebar?.render?.(App.state);
       updateChatHeader();
       updateContextMeter(null);
+      refreshChatOptions(null);
+      notifyPanelSession(null);
       window.Chat?.renderMessages?.([]);
       $('#composer')?.focus();
     },
@@ -92,10 +107,15 @@
             try { localStorage.setItem(LAST_CWD_KEY, cwd); } catch (_) { /* ignore */ }
           }
           const session = await window.kimi.createSession({ cwd });
+          // The server ignores agent_config.model in the create body, so the
+          // model must be set via the profile endpoint before the first prompt.
+          await applyDefaultModel(session.id);
           await App.refreshSessions();
           App.state.activeId = session.id;
           window.Sidebar?.render?.(App.state);
           updateChatHeader();
+          refreshChatOptions(session.id);
+          notifyPanelSession(session.id);
           window.Chat?.renderMessages?.([]);
           id = session.id;
         }
@@ -126,6 +146,84 @@
   };
 
   window.App = App;
+
+  /** Invoke an optional hook on a sibling module without ever breaking boot. */
+  function safeCall(fn) {
+    try {
+      const r = fn?.();
+      if (r && typeof r.catch === 'function') {
+        r.catch((err) => console.error(err));
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  /* ---- chat options (model picker / swarm toggle, owned by R4) ---- */
+
+  function initChatOptionsOnce() {
+    if (chatOptionsInited) return;
+    chatOptionsInited = true;
+    safeCall(() => window.ChatOptions?.init?.());
+    updateModelSelectLabel();
+  }
+
+  function refreshChatOptions(sessionId) {
+    if (!chatOptionsInited) return;
+    safeCall(() => window.ChatOptions?.refresh?.(sessionId));
+    updateModelSelectLabel();
+  }
+
+  /**
+   * Fallback label for the #model-select pill. ChatOptions (R4) owns the
+   * label whenever it is loaded; this only covers its absence and never
+   * overwrites a label ChatOptions has already set.
+   */
+  function updateModelSelectLabel() {
+    const btn = $('#model-select');
+    if (!btn || window.ChatOptions) return;
+    const label =
+      App.state.sessions.find((s) => s.id === App.state.activeId)?.model ||
+      App.state.defaultModel ||
+      '';
+    if (label) btn.textContent = label;
+  }
+
+  /**
+   * Tell the agent-work panel (R3) which session is active. The shipped
+   * interface is Panel.setActiveSession(id); Panel.setSession is accepted
+   * as a fallback name.
+   */
+  function notifyPanelSession(id) {
+    const panel = window.Panel;
+    if (!panel) return;
+    if (typeof panel.setActiveSession === 'function') {
+      safeCall(() => panel.setActiveSession(id));
+    } else {
+      safeCall(() => panel.setSession?.(id));
+    }
+  }
+
+  /* ---- default model on new sessions (Settings, owned by R4) ---- */
+
+  function readStoredDefaultModel() {
+    try { return localStorage.getItem(DEFAULT_MODEL_KEY); } catch (_) { return null; }
+  }
+
+  /** Best-effort: apply the configured default model to a fresh session. */
+  async function applyDefaultModel(sessionId) {
+    try {
+      const model =
+        window.Settings?.getDefaultModel?.() ||
+        readStoredDefaultModel() ||
+        App.state.defaultModel;
+      if (model && typeof window.kimi.setSessionModel === 'function') {
+        await window.kimi.setSessionModel(sessionId, model);
+      }
+    } catch (err) {
+      console.error('setSessionModel failed (best-effort)', err);
+    }
+  }
 
   /* ---- header / composer helpers ---- */
 
@@ -173,6 +271,21 @@
     refreshTimer = setTimeout(() => App.refreshSessions(), 150);
   }
 
+  /* ---- update status dot on #settings-btn ---- */
+
+  function setUpdateDot(show, version) {
+    updateReady = !!show;
+    const dot = $('#settings-update-dot');
+    if (dot) dot.hidden = !updateReady;
+    const btn = $('#settings-btn');
+    if (!btn) return;
+    btn.classList.toggle('has-update', updateReady);
+    btn.title = updateReady
+      ? T('update.ready_title', '업데이트 준비됨 — 설정에서 다시 시작하여 적용') +
+        (version ? ` (v${version})` : '')
+      : T('settings.open_title', '설정');
+  }
+
   /* ---- push-event dispatch (window.kimi.onEvent) ---- */
 
   function handleEvent(msg) {
@@ -183,7 +296,7 @@
         if (msg.ready) App.refreshSessions(); // resync after reconnect
         break;
       case 'session':
-        onSessionEvent(msg.event);
+        onSessionEvent(msg.sessionId, msg.event);
         break;
       case 'usage':
         if (msg.sessionId === App.state.activeId) updateContextMeter(msg.usage);
@@ -191,15 +304,29 @@
           window.Usage?.updateUsage?.(msg.sessionId, msg.usage);
         }
         break;
+      case 'onboarding':
+        // CLI-install / login progress for the onboarding UI (R1).
+        safeCall(() => window.Onboarding?.handleEvent?.(msg));
+        break;
+      case 'update':
+        if (msg.status === 'downloaded') setUpdateDot(true, msg.version);
+        break;
     }
   }
 
-  function onSessionEvent(ev) {
+  function onSessionEvent(sessionId, ev) {
     if (!ev) return;
     const type = String(ev.type || '');
     // Chat transcript and approval dialogs handle their own event kinds.
     window.Chat?.applyEvent?.(App.state.activeId, ev);
     window.Approvals?.maybeHandle?.(ev);
+    // The agent-work panel (R3) sees every session event.
+    safeCall(() =>
+      window.Panel?.handleEvent?.(
+        sessionId ?? ev.session_id ?? ev.sessionId ?? ev.payload?.sessionId ?? null,
+        ev
+      )
+    );
     // Session-lifecycle events change sidebar membership/title/busy state.
     if (/session\.(created|updated|deleted|status_changed|work_changed)/.test(type)) {
       scheduleRefreshSessions();
@@ -248,6 +375,17 @@
     });
     $('#abort-btn').addEventListener('click', () => App.abort());
     $('#boot-retry-btn').addEventListener('click', () => location.reload());
+    // v2 chrome. Search palette (⌘F / #search-open-btn) is wired by R2's
+    // search.js; model/swarm pill clicks are wired by R4's ChatOptions.init().
+    $('#settings-btn')?.addEventListener('click', () => {
+      safeCall(() => window.Settings?.open?.());
+    });
+    $('#panel-toggle-btn')?.addEventListener('click', () => {
+      safeCall(() => window.Panel?.toggle?.());
+    });
+    $('#panel-close-btn')?.addEventListener('click', () => {
+      safeCall(() => window.Panel?.toggle?.());
+    });
     wireComposer();
     window.addEventListener('keydown', (e) => {
       if (!(e.metaKey || e.ctrlKey)) return;
@@ -268,14 +406,61 @@
     $('#boot-error').style.display = 'flex';
   }
 
-  async function boot() {
+  /** Hide the splash/onboarding layers when the gate module is unavailable. */
+  function hideOnboardingLayers() {
+    const splash = $('#splash');
+    if (splash) splash.hidden = true;
+    const onboarding = $('#onboarding');
+    if (onboarding) onboarding.hidden = true;
+  }
+
+  /**
+   * Boot: nothing visual happens until the onboarding gate (R1) resolves.
+   * Onboarding.init(bootMain) plays the splash, routes through CLI install /
+   * login when needed, and calls bootMain once the app may proceed. Without
+   * the module (or if it fails) we hide the gate layers and boot directly
+   * (v1 behavior).
+   */
+  function boot() {
     wireChrome();
+    if (typeof window.Onboarding?.init === 'function') {
+      const fallback = (err) => {
+        console.error('Onboarding.init failed; booting directly', err);
+        hideOnboardingLayers();
+        void bootMain();
+      };
+      try {
+        const r = window.Onboarding.init(bootMain);
+        if (r && typeof r.catch === 'function') r.catch(fallback);
+      } catch (err) {
+        fallback(err);
+      }
+      return;
+    }
+    hideOnboardingLayers();
+    void bootMain();
+  }
+
+  async function bootMain() {
     let state;
     try {
       if (!window.kimi) throw new Error('preload API(window.kimi)를 사용할 수 없습니다.');
       state = await window.kimi.getState();
     } catch (err) {
       showBootError(err?.message || String(err));
+      return;
+    }
+    if (state?.needsOnboarding) {
+      // CLI missing or logged out: hand control back to the onboarding gate.
+      if (typeof window.Onboarding?.show === 'function') {
+        safeCall(() => window.Onboarding.show());
+      } else if (typeof window.Onboarding?.init === 'function') {
+        safeCall(() => window.Onboarding.init(bootMain));
+      } else {
+        showBootError(
+          state?.error || 'Kimi Code CLI를 찾을 수 없거나 로그인이 필요합니다.'
+        );
+      }
       return;
     }
     if (!state?.ready) {
@@ -288,7 +473,8 @@
     App.state.version = state.version ?? null;
     App.state.defaultModel = state.defaultModel ?? null;
     setServerStatus(true);
-    window.kimi.onEvent(handleEvent);
+    initChatOptionsOnce();
+    if (!unsubscribeEvents) unsubscribeEvents = window.kimi.onEvent(handleEvent);
     try {
       App.state.sessions = await window.kimi.listSessions();
     } catch (err) {

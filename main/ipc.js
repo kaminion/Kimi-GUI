@@ -6,33 +6,50 @@
  * webContents.send('kimi:event', payload).
  *
  * registerIpc({
- *   getClient,   // () => KimiClient | null (null until the server is up / after failure)
- *   getAppState, // () => ({ ready, version, defaultModel, error? })
- *   getToken,    // () => string | null   (server bearer token; never logged)
- *   getWindow,   // () => BrowserWindow | null
- *   broadcast,   // (payload) => void     (already targets the main window)
+ *   getClient,    // () => KimiClient | null (null until the server is up / after failure)
+ *   getAppState,  // () => ({ ready, version, defaultModel, error? })
+ *   getToken,     // () => string | null   (server bearer token; never logged)
+ *   getWindow,    // () => BrowserWindow | null
+ *   broadcast,    // (payload) => void     (already targets the main window)
+ *   retryBackend, // () => Promise<state>  (re-run the KimiClient launch after onboarding)
  * })
  *
  * wireClientEvents(client, broadcast) attaches 'event'/'usage'/'status'
  * forwarding to a freshly launched client.
+ *
+ * V2 (CONTRACT-V2): onboarding (CLI install + login) backed by ./onboarding,
+ * listModels/setSessionModel/setSessionSwarm/listTasks on the client, and
+ * lazy cross-agent modules: ./search (M2 — searchAll) and ./updater (M3 —
+ * register({ipcMain, send}) wiring kimi:updateCheck / kimi:updateQuitAndInstall).
+ * Missing lazy modules degrade to a thrown Error (search/onboarding) or a
+ * graceful {status:'dev'} fallback (updates) — never a crash.
  */
 
-const { ipcMain, dialog, shell } = require('electron');
+const { app, ipcMain, dialog, shell } = require('electron');
 
-// Lazy: main/quota.js is owned by another agent and may not exist yet.
-let quotaModule = null;
-let quotaLoadFailed = false;
-function loadQuota() {
-  if (quotaModule || quotaLoadFailed) return quotaModule;
-  try {
-    // eslint-disable-next-line global-require
-    quotaModule = require('./quota');
-  } catch {
-    quotaLoadFailed = true;
-    quotaModule = null;
-  }
-  return quotaModule;
+/** require() a sibling module at most once; null (cached) when absent. */
+function lazyLoader(relPath) {
+  let mod = null;
+  let failed = false;
+  return () => {
+    if (mod || failed) return mod;
+    try {
+      // eslint-disable-next-line global-require
+      mod = require(relPath);
+    } catch {
+      failed = true;
+      mod = null;
+    }
+    return mod;
+  };
 }
+
+// ./quota and ./onboarding ship with the app; ./search (M2) and ./updater (M3)
+// may not exist yet — all four are lazy so this file loads regardless.
+const loadQuota = lazyLoader('./quota');
+const loadOnboarding = lazyLoader('./onboarding');
+const loadSearch = lazyLoader('./search');
+const loadUpdater = lazyLoader('./updater');
 
 function requireClient(getClient) {
   const client = getClient();
@@ -42,12 +59,75 @@ function requireClient(getClient) {
   return client;
 }
 
-function registerIpc({ getClient, getAppState, getToken, getWindow }) {
+function requireOnboarding() {
+  const onboarding = loadOnboarding();
+  if (!onboarding) throw new Error('onboarding is unavailable (main/onboarding.js failed to load)');
+  return onboarding;
+}
+
+// Tracks whether ./updater's register() wired the real update handlers.
+let updaterWired = false;
+function wireUpdater(send) {
+  if (updaterWired) return;
+  const updater = loadUpdater();
+  if (!updater || typeof updater.register !== 'function') return;
+  try {
+    updater.register({ ipcMain, send });
+    updaterWired = true;
+  } catch (err) {
+    console.warn(`[kimi-desktop] updater.register failed: ${err.message}`);
+  }
+}
+
+function registerIpc({ getClient, getAppState, getToken, getWindow, broadcast, retryBackend }) {
   const handle = (name, fn) => {
     ipcMain.handle(`kimi:${name}`, (_event, ...args) => fn(...args));
   };
 
-  handle('getState', () => getAppState());
+  // getState shape: backend state + onboarding flags (shared by bootstrapRetry).
+  const buildState = async () => {
+    const appState = getAppState();
+    const onboarding = loadOnboarding();
+    if (!onboarding) return appState;
+    try {
+      // Cheap variant: no `kimi --version` spawn on every getState call.
+      const ob = await onboarding.getOnboardingState({ withVersion: false });
+      return {
+        ...appState,
+        cliInstalled: ob.cliInstalled,
+        loggedIn: ob.loggedIn,
+        needsOnboarding: ob.needsOnboarding,
+      };
+    } catch (err) {
+      console.warn(`[kimi-desktop] onboarding state in getState failed: ${err.message}`);
+      return appState;
+    }
+  };
+
+  handle('getState', buildState);
+
+  // --- Onboarding (splash/first-run): CLI install + Kimi login -------------
+
+  handle('onboardingGetState', () => requireOnboarding().getOnboardingState());
+
+  // Progress is pushed as {type:'onboarding', phase:'install', step, message}.
+  handle('onboardingInstallCli', () => requireOnboarding().installCli(broadcast));
+
+  // Resolves {verificationUrl, userCode}; completion pushed as
+  // {type:'onboarding', phase:'login', status:'done'|'error', message?}.
+  handle('onboardingStartLogin', () => requireOnboarding().startLogin(broadcast));
+
+  handle('onboardingCancelLogin', () => requireOnboarding().cancelLogin());
+
+  // Re-run the backend launch once onboarding finished (first launch may have
+  // failed with no CLI installed). Returns the fresh state (getState shape).
+  handle('bootstrapRetry', async () => {
+    if (typeof retryBackend !== 'function') throw new Error('backend retry is unavailable');
+    await retryBackend();
+    return buildState();
+  });
+
+  // --- Sessions / chat options ---------------------------------------------
 
   handle('listSessions', () => requireClient(getClient).listSessions());
 
@@ -84,6 +164,45 @@ function registerIpc({ getClient, getAppState, getToken, getWindow }) {
     requireClient(getClient).answerQuestion(sessionId, tail, body),
   );
 
+  // GET /api/v1/models item (verified live):
+  //   {provider, model, display_name, max_context_size, capabilities}
+  // Normalized per contract: `alias` is the model id itself — it is both the
+  // value setSessionModel() sends and what getState().defaultModel contains,
+  // so renderer checkmarks/labels stay consistent. displayName is additive.
+  handle('listModels', async () => {
+    const items = await requireClient(getClient).listModels();
+    return (Array.isArray(items) ? items : [])
+      .filter((it) => it && typeof it.model === 'string' && it.model.length > 0)
+      .map((it) => ({
+        alias: it.model,
+        model: it.model,
+        displayName: typeof it.display_name === 'string' ? it.display_name : it.model,
+      }));
+  });
+
+  handle('setSessionModel', (sessionId, model) =>
+    requireClient(getClient).setSessionModel(sessionId, model),
+  );
+
+  // Swarm mode IS settable per session (verified live: POST profile
+  // {agent_config:{swarm_mode}} -> GET /status.swarm_mode), so it is exposed.
+  handle('setSessionSwarm', (sessionId, enabled) =>
+    requireClient(getClient).setSessionSwarm(sessionId, enabled),
+  );
+
+  handle('listTasks', (sessionId) => requireClient(getClient).listTasks(sessionId));
+
+  // --- Cross-agent lazy modules --------------------------------------------
+
+  handle('searchAll', (query, limit) => {
+    const search = loadSearch();
+    if (!search || typeof search.searchAll !== 'function') {
+      throw new Error('search is unavailable (main/search.js not installed)');
+    }
+    const n = Number.isInteger(limit) && limit > 0 ? limit : 50;
+    return search.searchAll(String(query ?? ''), n);
+  });
+
   handle('getQuota', async () => {
     const quota = loadQuota();
     if (!quota || typeof quota.getQuota !== 'function') return null;
@@ -94,6 +213,17 @@ function registerIpc({ getClient, getAppState, getToken, getWindow }) {
       return null; // UI falls back to per-session usage only
     }
   });
+
+  // M3's updater wires kimi:updateCheck / kimi:updateQuitAndInstall itself via
+  // register(); fall back to graceful dev stubs when it is absent/broken.
+  wireUpdater(broadcast);
+  if (!updaterWired) {
+    handle('updateCheck', () => ({ status: 'dev' }));
+    handle('updateQuitAndInstall', () => {
+      throw new Error('updates are unavailable in this build');
+    });
+  }
+  handle('getAppVersion', () => app.getVersion());
 
   handle('openExternal', async (url) => {
     // Security boundary: only http(s) URLs may leave the app.

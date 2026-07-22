@@ -1,0 +1,341 @@
+/* ==========================================================================
+   Kimi Desktop — settings.css (R4)
+   Settings modal (#settings-root): backdrop + 560px card with left section
+   rail / right content, segmented controls, account/update rows.
+   Chat-options chrome: #model-select pill + .model-dropdown, #swarm-toggle.
+   Tokens only (--bg, --text, --accent, --border, --radius-*, --space-*);
+   dark-first handled by base.css — no hardcoded colors here.
+   ========================================================================== */
+
+/* ---- Settings modal shell ---- */
+
+/* Reuses .modal-backdrop (scrim + blur) from components.css; sits just below
+   approval/question modals so urgent prompts stay on top. */
+.settings-backdrop {
+  z-index: 90;
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  backdrop-filter: blur(20px) saturate(1.4);
+}
+
+.settings-modal {
+  display: flex;
+  width: 560px;
+  max-width: calc(100vw - 64px);
+  height: 460px;
+  max-height: calc(100vh - 64px);
+  overflow: hidden;
+  background: var(--bg);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-modal);
+}
+
+/* ---- Left section rail ---- */
+
+.settings-nav {
+  flex: none;
+  width: 164px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-2);
+  background: var(--bg-secondary);
+  border-right: 0.5px solid var(--border);
+}
+
+.settings-nav-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 5px var(--space-2);
+  border-radius: var(--radius-m);
+  font-size: 13px;
+  color: var(--text);
+  text-align: left;
+}
+
+.settings-nav-item:hover {
+  background: var(--hover-bg);
+}
+
+.settings-nav-item.active {
+  background: var(--active-bg);
+  font-weight: 500;
+}
+
+/* ---- Right content ---- */
+
+.settings-content {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: var(--space-3) var(--space-4) var(--space-4);
+}
+
+.settings-section-title {
+  margin-bottom: var(--space-2);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 10px 0;
+  border-bottom: 0.5px solid var(--border);
+}
+
+.settings-row-texts {
+  min-width: 0;
+}
+
+.settings-row-label {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.settings-row-desc {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.settings-value {
+  max-width: 240px;
+  overflow: hidden;
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- Segmented control (language / theme) ---- */
+
+.settings-segment {
+  display: inline-flex;
+  flex: none;
+  gap: 2px;
+  padding: 2px;
+  background: var(--bg-secondary);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius-m);
+}
+
+.settings-segment-btn {
+  padding: 3px 12px;
+  border-radius: var(--radius-s);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.settings-segment-btn:hover {
+  color: var(--text);
+}
+
+.settings-segment-btn.active {
+  background: var(--active-bg);
+  color: var(--text);
+  font-weight: 500;
+  box-shadow: inset 0 0 0 0.5px var(--border);
+}
+
+/* ---- Default-model select ---- */
+
+.settings-select {
+  flex: none;
+  min-width: 180px;
+  max-width: 220px;
+  padding: 4px var(--space-2);
+  font-size: 12px;
+  color: var(--text);
+  background: var(--bg-secondary);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius-m);
+  outline: none;
+}
+
+.settings-select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* ---- Account section ---- */
+
+.settings-account-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.settings-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-dim);
+}
+
+.settings-dot.ok {
+  background: var(--success);
+}
+
+.settings-dot.err {
+  background: var(--warn);
+}
+
+.settings-status-text {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.settings-btn-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.settings-login {
+  margin-top: var(--space-3);
+}
+
+.settings-login-hint {
+  margin-bottom: var(--space-2);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.settings-login-code {
+  display: inline-block;
+  margin-bottom: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  font-family: var(--font-mono);
+  font-size: 18px;
+  letter-spacing: 2px;
+  color: var(--text);
+  background: var(--code-bg);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius-m);
+  user-select: all;
+}
+
+.settings-login-waiting {
+  margin-top: var(--space-2);
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.settings-login-error {
+  margin-top: var(--space-2);
+  font-size: 12px;
+  color: var(--danger);
+}
+
+/* ---- Updates section ---- */
+
+.settings-update-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.settings-update-status:empty {
+  display: none;
+}
+
+.settings-update-restart {
+  margin-top: var(--space-3);
+}
+
+/* ---- Chat header: model pill + dropdown ---- */
+
+/* Chevron on the shell-owned #model-select pill (label text set by JS). */
+#model-select::after {
+  content: '';
+  flex: none;
+  width: 5px;
+  height: 5px;
+  margin-left: 2px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg) translateY(-1px);
+}
+
+/* Native-feeling floating list, anchored to the pill via fixed coords. */
+.model-dropdown {
+  position: fixed;
+  z-index: 300;
+  min-width: 200px;
+  max-width: 320px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: var(--space-1);
+  background: var(--sidebar-bg);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  backdrop-filter: blur(20px) saturate(1.4);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius-l);
+  box-shadow: var(--shadow-modal);
+}
+
+.model-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px var(--space-2);
+  border-radius: var(--radius-m);
+  font-size: 13px;
+  color: var(--text);
+  text-align: left;
+}
+
+.model-dropdown-item:hover {
+  background: var(--hover-bg);
+}
+
+.model-dropdown-check {
+  flex: none;
+  width: 12px;
+  font-size: 11px;
+  color: var(--accent);
+  text-align: center;
+}
+
+.model-dropdown-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-dropdown-item.current .model-dropdown-label {
+  font-weight: 600;
+}
+
+.model-dropdown-note {
+  padding: var(--space-2) 10px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+/* ---- Chat header: swarm toggle (switch-pill) ---- */
+
+#swarm-toggle::before {
+  content: '';
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-dim);
+}
+
+#swarm-toggle.on {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+#swarm-toggle.on::before {
+  background: var(--accent);
+}

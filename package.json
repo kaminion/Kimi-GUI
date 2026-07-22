@@ -4,6 +4,13 @@
   "private": true,
   "description": "Desktop GUI wrapper around the Kimi Code CLI (kimi web)",
   "main": "main/main.js",
+  "publish": [
+    {
+      "provider": "github",
+      "owner": "kaminion",
+      "repo": "kimi-gui"
+    }
+  ],
   "scripts": {
     "start": "electron .",
     "dist": "electron-builder"
@@ -13,6 +20,7 @@
     "electron-builder": "^26.15.3"
   },
   "dependencies": {
+    "electron-updater": "6.8.9",
     "highlight.js": "^11.11.1",
     "marked": "^18.0.7"
   }

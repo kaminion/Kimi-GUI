@@ -1,7 +1,8 @@
 # Kimi Desktop — Design System
 
-Apple-HIG design system for the Kimi Desktop chat UI. Implemented in three
-stylesheets, loaded in this order (no bundler, plain `<link>` tags):
+Apple-HIG, **dark-first black-premium** (v2) design system for the Kimi
+Desktop chat UI. Implemented in three stylesheets, loaded in this order
+(no bundler, plain `<link>` tags):
 
 1. `renderer/styles/base.css` — tokens, reset, focus rings, scrollbars
 2. `renderer/styles/layout.css` — window chrome and view structure
@@ -10,29 +11,66 @@ stylesheets, loaded in this order (no bundler, plain `<link>` tags):
 UI copy is Korean (owned by the JS agents); the CSS itself contains no
 user-visible strings.
 
+## Theme model (v2): dark-first, inverted token layering
+
+The product default is **dark on every OS** — the app renders dark unless
+the user explicitly picks 라이트 in Settings. v1's layering (`:root` light +
+`@media (prefers-color-scheme: dark)` overrides) could not express "dark
+even on a light OS", so v2 **inverts** it:
+
+- `:root` — **dark** black-premium palette (base). Also covers
+  `[data-theme="dark"]` and a missing `data-theme` attribute.
+- `:root[data-theme="light"]` — the v1 Apple **light** palette, unchanged
+  (explicit opt-in only).
+- There is no `prefers-color-scheme` token block anymore: theme comes from
+  `documentElement.dataset.theme`, which app.js sets from
+  `localStorage 'kimi.theme'` before first paint (inline `<head>` script,
+  no FOUC). `시스템` simply leaves the attribute unset → dark.
+
+Token **names** are unchanged from v1 (other code depends on them); only
+the dark values moved to the base layer. `color-scheme: dark|light` is set
+on `:root` per theme so UA controls and scrollbars match. Component rules
+that must differ per theme beyond tokens (hljs palette, modal backdrop)
+use base = dark + `:root[data-theme="light"] …` overrides, mirroring the
+token layering.
+
 ## Tokens (`base.css`)
 
-Contract-fixed custom properties on `:root` (light) with overrides in
-`@media (prefers-color-scheme: dark)`:
+Contract-fixed custom properties; v2 dark values are the base `:root`
+values, light lives under `:root[data-theme="light"]`:
 
-| Token | Light | Dark |
+| Token | Dark (base) | Light (`[data-theme="light"]`) |
 | --- | --- | --- |
-| `--bg` | `#ffffff` | `#1d1d1f` |
-| `--bg-secondary` | `#f5f5f7` | `#2c2c2e` |
-| `--sidebar-bg` | `rgba(246,246,248,.8)` | `rgba(30,30,32,.72)` |
-| `--text` | `#1d1d1f` | `#f5f5f7` |
-| `--text-secondary` | `#6e6e73` | `#a1a1a6` |
-| `--text-dim` | `#86868b` | `#6e6e73` |
-| `--accent` | `#007aff` | `#0a84ff` |
+| `--bg` | `#000000` | `#ffffff` |
+| `--bg-secondary` | `#0a0a0d` | `#f5f5f7` |
+| `--sidebar-bg` | `rgba(14,14,18,.72)` | `rgba(246,246,248,.8)` |
+| `--header-bg` | `rgba(10,10,13,.72)` | `rgba(255,255,255,.8)` |
+| `--text` | `#f5f5f7` | `#1d1d1f` |
+| `--text-secondary` | `#98989f` | `#6e6e73` |
+| `--text-dim` | `#6e6e73` | `#86868b` |
+| `--accent` | `#0a84ff` | `#007aff` |
 | `--accent-text` | `#ffffff` | `#ffffff` |
-| `--border` | `rgba(0,0,0,.10)` | `rgba(255,255,255,.12)` |
-| `--danger` | `#ff3b30` | `#ff453a` |
-| `--success` | `#34c759` | `#30d158` |
-| `--warn` | `#ff9500` | `#ff9f0a` |
-| `--code-bg` | `#f5f5f7` | `#2c2c2e` |
+| `--border` | `rgba(255,255,255,.08)` | `rgba(0,0,0,.10)` |
+| `--danger` | `#ff453a` | `#ff3b30` |
+| `--success` | `#30d158` | `#34c759` |
+| `--warn` | `#ff9f0a` | `#ff9500` |
+| `--code-bg` | `#101013` | `#f5f5f7` |
+| `--hover-bg` | `rgba(255,255,255,.06)` | `rgba(0,0,0,.04)` |
+| `--active-bg` | `rgba(255,255,255,.10)` | `rgba(0,0,0,.07)` |
+| `--accent-soft` | `rgba(10,132,255,.24)` | `rgba(0,122,255,.15)` |
+| `--danger-soft` | `rgba(255,69,58,.16)` | `rgba(255,59,48,.10)` |
+| `--selection-bg` | `rgba(10,132,255,.30)` | `rgba(0,122,255,.28)` |
+| `--scrollbar-thumb` | `rgba(255,255,255,.18)` | `rgba(0,0,0,.20)` |
+| `--shadow-card` | `0 1px 3px rgba(0,0,0,.6)` | `0 1px 2px rgba(0,0,0,.05), 0 4px 16px rgba(0,0,0,.05)` |
+| `--shadow-modal` | `0 12px 40px rgba(0,0,0,.65)` | `0 12px 40px rgba(0,0,0,.18)` |
 | `--radius-l` / `--radius-m` / `--radius-s` | `10px` / `8px` / `6px` | same |
 | `--font-ui` | `-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", …` | same |
 | `--font-mono` | `ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, …` | same |
+
+Black premium = restraint: true-black `--bg`, surfaces lifted one step
+(`#0a0a0d` / `#101013`), 0.5px hairlines instead of shadows (shadows are
+near-invisible on black by design), no gradients anywhere, selection is
+the accent at 30%.
 
 ### Added tokens (not in the contract, safe to use in JS-injected markup)
 
@@ -40,11 +78,14 @@ Contract-fixed custom properties on `:root` (light) with overrides in
   `--space-2:8px`, `--space-3:16px`, `--space-4:24px`, `--space-5:32px`,
   `--space-6:48px`.
 - `--radius-xl: 12px` (composer card, usage cards).
+- `--surface-raised` (v2) — elevated surface for floating layers (composer
+  card, `.modal`). `#0a0a0d` in dark (lifts off true black), `#ffffff` in
+  light (equals `--bg`). Use this instead of `--bg` for anything that
+  floats.
 - `--accent-soft`, `--hover-bg`, `--active-bg`, `--danger-soft` — translucent
   state fills that work over any background.
-- `--header-bg` — translucent chat-header fill (matches `--bg` at 80%).
 - `--selection-bg`, `--scrollbar-thumb`.
-- `--shadow-card` (composer), `--shadow-modal` (dialogs). No gradients anywhere.
+- `--shadow-card` (composer), `--shadow-modal` (dialogs).
 - Metrics: `--titlebar-h: 34px`, `--sidebar-w: 260px`.
 
 ## Type & rhythm
@@ -67,16 +108,47 @@ Contract-fixed custom properties on `:root` (light) with overrides in
   blur(20px)`) with a 0.5px right hairline. Session items: 8px radius,
   hover → `--hover-bg`, `.active` → `--active-bg`, `.busy` → pulsing accent dot
   via `::after` (keyframe `busy-pulse`), titles clamp to 2 lines.
+- `#sidebar-header` (v2) is a flex row: `#new-chat-btn` flexes,
+  `#search-open-btn` is a fixed ghost icon. `#sidebar-footer` appends
+  `#settings-btn` after `#usage-nav-btn` + `#server-status`.
+- Session grouping: `.session-group` blocks (16px apart) headed by
+  `.session-group-label` (11px/600, dim, flex row so a chevron fits).
+  Collapse hook for sidebar.js: toggle `.collapsed` on the group — items
+  hide and the label chevron (an inline `<svg>` or `.session-group-chevron`,
+  right-pointing base glyph like `.tool-chevron`) rotates back from 90°
+  (down, expanded) to 0° (right, collapsed).
 - `#chat-header` is 48px, translucent with blur and a bottom hairline;
-  `#chat-title` flexes and truncates, metadata pills sit on the trailing edge.
-- `#composer-wrap` is a floating card: 12px radius, 0.5px border, subtle
+  `#chat-title` flexes and truncates. The v2 right cluster
+  (`#model-label`, `#context-meter`, `#model-select`, `#swarm-toggle`,
+  `#panel-toggle-btn`, `#abort-btn`) rides the header's 8px flex gap and
+  never shrinks (`#chat-header > :not(#chat-title) { flex: none }`).
+- `#composer-wrap` is a floating card: 12px radius, 0.5px border,
+  `--surface-raised` fill (lifts off true black in dark), subtle
   `--shadow-card`, centered at `max-width: 760px` with 16px bottom margin.
   `:focus-within` moves the accent ring to the card (textarea itself has no
   outline). The textarea auto-grows via JS and scrolls past `max-height: 160px`.
-- `#usage-view` is a scrollable grid: `repeat(auto-fit, minmax(220px, 1fr))`
-  of `.usage-card`s plus the `#session-usage` table card below.
+- `#usage-view` is a scrollable column: `#quota-cards` wraps a
+  `.usage-section-title` plus `.usage-card-grid`
+  (`repeat(auto-fit, minmax(220px, 1fr))` of `.usage-card`s); the
+  `#session-usage` card below holds `.usage-row` label/value pairs and the
+  `.usage-context` block.
 - `[hidden]` carries `display: none !important` in the reset so toggling the
   attribute on `#chat-view` / `#usage-view` / `#abort-btn` always wins.
+
+## v2 chrome: ghost-icon pills
+
+`#model-select`, `#swarm-toggle` (chat header, both carry `.pill` in the DOM
+contract and are restyled as ghosts by id), `#panel-toggle-btn` (chat
+header), `#search-open-btn` (sidebar header), `#settings-btn` (sidebar
+footer): transparent pills, 12px label text, 26px minimum hit area,
+`border-radius: 999px`, hover → `--hover-bg` + `--text`, active →
+`--active-bg`. Glyphs are 12px CSS masks tinted `currentColor`
+(magnifier / gear / right-panel / node-graph), drawn via `::before`;
+`#model-select` instead gets a trailing 10px chevron `::after` and a
+180px max-width with ellipsis on a `<span>` label. If the markup ever uses
+an inline `<svg>`, the CSS glyph hides via `:has(svg)` (same convention as
+`#send-btn`). Swarm engaged state hooks (any works): `.on`, `.active`,
+`[aria-pressed="true"]` → accent text on `--accent-soft`.
 
 ## Component DOM hooks (for chat/shell agents)
 
@@ -119,7 +191,7 @@ expects (reconcile here if your markup differs):
   </div>
 </div>
 
-<!-- Usage card (contract-fixed children) + optional .usage-card-sub line -->
+<!-- Usage card (contract-fixed children) + optional .usage-card-caption line -->
 <div class="usage-card">
   <div class="usage-card-title">주간 사용량</div>
   <div class="usage-card-value">42%</div>
@@ -134,15 +206,18 @@ Notes:
   works. Optional modifiers `.warn` / `.crit` recolor the fill.
 - `#model-label` / `#context-meter` carry the pill look directly by id, so no
   extra class is needed; `.badge` / `.pill` exist for anything else.
-- A minimal Xcode-ish `.hljs` token theme (light + dark) ships in
-  `components.css`, so no vendor highlight theme CSS is required. It does not
-  collide with a vendor theme if the shell agent decides to link one anyway.
+- A minimal Xcode-ish `.hljs` token theme (dark base + light override) ships
+  in `components.css`, so no vendor highlight theme CSS is required. It does
+  not collide with a vendor theme if the shell agent decides to link one anyway.
 - `#send-btn` draws its arrow via CSS mask — leave the button empty in HTML.
   If an inline `<svg>` is ever added, the CSS arrow hides via `:has(svg)`.
-- All glyphs (chevron, status check/x, spinner, send arrow) are CSS masks or
-  borders — no emoji, no image assets, all tint via tokens.
+- All glyphs (chevron, status check/x, spinner, send arrow, v2 chrome icons)
+  are CSS masks or borders — no emoji, no image assets, all tint via tokens.
 - Buttons use `cursor: default` per macOS convention (no hand cursor).
 - `prefers-reduced-motion` collapses all animations/transitions.
+- `#boot-error` keeps its inline styles in index.html (renders even if CSS
+  fails; app.js toggles `style.display`); `components.css` mirrors the same
+  look via tokens so the layer stays themed if the inline styles are dropped.
 
 ## Icon
 
@@ -157,6 +232,6 @@ terminal chevron and an accent-blue (`#0A84FF`) block cursor.
 - Font stack falls back to Segoe UI / Malgun Gothic on Windows; translucent
   surfaces degrade gracefully without vibrancy (they sit over `--bg`).
 - Scrollbars: 8px `::-webkit-scrollbar` with rounded thumb, transparent track
-  (plus `scrollbar-width: thin` for completeness).
+  (plus `scrollbar-width: thin` and `color-scheme` for completeness).
 - All borders are 0.5–1px token-based hairlines; everything interactive has
   `:hover` / `:active` states and `:focus-visible` gets a 2px accent ring.

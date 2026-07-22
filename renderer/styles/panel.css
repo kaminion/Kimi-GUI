@@ -1,0 +1,249 @@
+/* panel.css — right agent-work panel (v2, R3).
+ * #panel is a flex sibling of #sidebar/#main inside #app (flex row, layout.css);
+ * order:3 keeps it rightmost. It pushes content (never overlays). Dark-first:
+ * colors come only from the design tokens — no hardcoded values.
+ */
+
+#panel {
+  width: 300px;
+  flex: none;
+  order: 3;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--bg-secondary);
+  border-left: 0.5px solid var(--border);
+  color: var(--text);
+  font-family: var(--font-ui);
+}
+/* display:flex above beats the UA [hidden] rule — restore it explicitly. */
+#panel[hidden] {
+  display: none;
+}
+
+/* ---- header ---- */
+#panel-header {
+  flex: none;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 0 var(--space-2) 0 var(--space-3);
+  border-bottom: 0.5px solid var(--border);
+}
+#panel-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#panel-close-btn {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+#panel-close-btn:hover {
+  background: var(--hover-bg);
+  color: var(--text);
+}
+
+/* ---- content column ---- */
+#panel-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+}
+#panel-content > [hidden] {
+  display: none;
+}
+
+.panel-section-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
+  margin-bottom: var(--space-1);
+}
+
+.panel-empty {
+  font-size: 12px;
+  color: var(--text-dim);
+  text-align: center;
+  padding: var(--space-4) var(--space-2);
+}
+
+/* ---- status strip (#panel-status) ---- */
+.panel-status-strip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  background: var(--bg);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius-m);
+}
+.panel-status-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-dim);
+}
+.panel-status-dot.running {
+  background: var(--accent);
+  animation: panel-pulse 1.2s ease-in-out infinite;
+}
+.panel-status-label {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.panel-status-value {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+.panel-status-value.running {
+  color: var(--accent);
+}
+.panel-status-tool {
+  margin-left: auto;
+  max-width: 40%;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--accent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---- tasks (#panel-tasks) ---- */
+.panel-task-list {
+  display: flex;
+  flex-direction: column;
+}
+.panel-task {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: 3px 0;
+  font-size: 12px;
+}
+.panel-task-glyph {
+  flex: none;
+  width: 12px;
+  text-align: center;
+  font-size: 9px;
+  color: var(--text-dim);
+}
+.panel-task-glyph.st-running { color: var(--accent); }
+.panel-task-glyph.st-done { color: var(--success); }
+.panel-task-glyph.st-error { color: var(--danger); }
+.panel-task-glyph.st-cancelled { color: var(--text-dim); }
+.panel-task-title {
+  flex: 1;
+  min-width: 0;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.panel-task-time {
+  flex: none;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+/* ---- recent tool activity (#panel-activity) ---- */
+.panel-act-list {
+  display: flex;
+  flex-direction: column;
+}
+.panel-act {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 2px 0;
+  font-size: 12px;
+}
+.panel-act-dot {
+  flex: none;
+  align-self: center;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-dim);
+}
+.panel-act-dot.running {
+  background: var(--accent);
+  animation: panel-pulse 1.2s ease-in-out infinite;
+}
+.panel-act-dot.done { background: var(--success); }
+.panel-act-dot.error { background: var(--danger); }
+.panel-act-name {
+  flex: none;
+  max-width: 45%;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.panel-act-summary {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---- changed files (#panel-files) ---- */
+.panel-file-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.panel-file-chip {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 2px var(--space-2);
+  background: var(--code-bg);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius-s);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@keyframes panel-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .panel-status-dot.running,
+  .panel-act-dot.running {
+    animation: none;
+  }
+}

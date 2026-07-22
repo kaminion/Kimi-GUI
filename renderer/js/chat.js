@@ -18,6 +18,11 @@
  *   turn end, so turn.ended also unlocks the composer.
  * Content parts: text | thinking | tool_use{tool_call_id,tool_name,input} |
  * tool_result{tool_call_id,output,is_error} | image | video | file.
+ *
+ * v2 additive: every rendered message row carries data-message-id, and
+ * Chat.scrollToMessage(id) scrolls a row into view with a 1.2s highlight
+ * flash (.search-highlight, keyframes in styles/search.css) — used by the
+ * search palette (js/search.js) via App.openSessionAtMessage.
  */
 (function () {
   'use strict';
@@ -27,6 +32,7 @@
   const SUMMARY_MAX = 80;        // one-line tool input summary
   const TOOL_BODY_MAX = 4000;    // collapsed tool body truncation
   const RELOAD_DEBOUNCE_MS = 300;
+  const HIGHLIGHT_FLASH_MS = 1200;  // keep in sync with search-highlight-flash in search.css
 
   // Event types we deliberately ignore (no transcript impact).
   // NOTE: turn.ended / prompt.completed / prompt.aborted are NOT ignored — they
@@ -71,6 +77,7 @@
   let busy = false;
   let pinned = true;
   let reloadTimer = null;
+  let highlightTimer = null;        // pending removal of a .search-highlight flash
 
   // ---- small helpers -------------------------------------------------------
   function el(tag, className, text) {
@@ -164,6 +171,26 @@
   }
 
   function maybeScroll() { if (pinned) scrollToBottom(); }
+
+  // ---- public: search jump target (v2) --------------------------------------
+  // Scroll the row for message `id` into view and flash it for 1.2s.
+  // Returns true when the row was found and flashed.
+  function scrollToMessage(id) {
+    if (!initialized || !transcriptEl || id == null) return false;
+    const esc = (window.CSS && typeof CSS.escape === 'function') ? CSS.escape(String(id)) : String(id);
+    const row = transcriptEl.querySelector('[data-message-id="' + esc + '"]');
+    if (!row) return false;
+    if (highlightTimer) { clearTimeout(highlightTimer); highlightTimer = null; }
+    transcriptEl.querySelectorAll('.search-highlight').forEach((n) => n.classList.remove('search-highlight'));
+    row.scrollIntoView({ block: 'center' });
+    void row.offsetWidth; // reflow: restart the flash when jumping to the same row twice
+    row.classList.add('search-highlight');
+    highlightTimer = setTimeout(() => {
+      highlightTimer = null;
+      row.classList.remove('search-highlight');
+    }, HIGHLIGHT_FLASH_MS);
+    return true;
+  }
 
   // ---- message DOM ---------------------------------------------------------
   // Map of tool_call_id -> tool_result part, across the whole transcript.
@@ -708,6 +735,7 @@
     liveStreams.clear();
     optimisticUser = null;
     if (reloadTimer) { clearTimeout(reloadTimer); reloadTimer = null; }
+    if (highlightTimer) { clearTimeout(highlightTimer); highlightTimer = null; }
     if (initialized) {
       transcriptEl.innerHTML = '';
       composerEl.value = '';
@@ -726,6 +754,7 @@
     setActiveSession,
     reset,
     scrollToBottom,
+    scrollToMessage,
   };
 
   // app.js may load after us; init as soon as the DOM is usable either way.

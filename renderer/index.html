@@ -2,17 +2,49 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
-  <!-- Self-contained app: scripts/styles/images only from the app bundle. -->
+  <!-- Self-contained app: scripts/styles/images only from the app bundle.
+       The single inline <script> below (pre-paint theme) is allow-listed by hash. -->
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+        content="default-src 'self'; script-src 'self' 'sha256-GvdpNkRIutULfcbOlm8oyKuuEdFxTsG0Fmi5UZBCz2A='; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Kimi</title>
+  <!-- Apply the persisted theme before first paint to avoid a flash.
+       Dark is the app default (CSS falls back to dark when unset), so only an
+       explicit dark/light choice needs to be stamped onto <html>. -->
+  <script>const t=localStorage['kimi.theme'];if(t&&t!=='system')document.documentElement.dataset.theme=t;</script>
   <link rel="stylesheet" href="styles/base.css">
   <link rel="stylesheet" href="styles/layout.css">
   <link rel="stylesheet" href="styles/components.css">
+  <link rel="stylesheet" href="styles/onboarding.css">
+  <link rel="stylesheet" href="styles/panel.css">
+  <link rel="stylesheet" href="styles/settings.css">
+  <link rel="stylesheet" href="styles/search.css">
 </head>
 <body>
   <div id="titlebar"></div>
+  <!-- Splash gate (plays on every launch; R1 owns its lifecycle). -->
+  <div id="splash"><div id="splash-logo"></div><div id="splash-word">Kimi</div></div>
+  <!-- Onboarding (CLI install + login; R1 owns behavior). -->
+  <div id="onboarding" hidden>
+    <div id="onboarding-card">
+      <div id="onboarding-logo"></div>
+      <h1 id="onboarding-title"></h1>
+      <p id="onboarding-desc"></p>
+      <div id="onboarding-progress" hidden>
+        <div class="progress-bar"><div></div></div>
+        <span id="onboarding-progress-label"></span>
+      </div>
+      <div id="onboarding-login" hidden>
+        <code id="login-code"></code>
+        <button id="login-url-btn" type="button"></button>
+        <span id="login-status"></span>
+      </div>
+      <div id="onboarding-actions">
+        <button id="onboarding-primary-btn" class="btn btn-primary" type="button"></button>
+        <button id="onboarding-secondary-btn" class="btn btn-ghost" type="button"></button>
+      </div>
+    </div>
+  </div>
   <div id="app">
     <aside id="sidebar">
       <div id="sidebar-header">
@@ -21,6 +53,12 @@
             <path d="M6.5 1.5v10M1.5 6.5h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
           </svg>
           <span>새 대화</span>
+        </button>
+        <button id="search-open-btn" type="button" title="검색 (⌘F)" aria-label="검색">
+          <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden="true">
+            <circle cx="5.5" cy="5.5" r="4" stroke="currentColor" stroke-width="1.5"/>
+            <path d="M8.7 8.7L12 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
         </button>
       </div>
       <nav id="session-list" aria-label="대화 목록"></nav>
@@ -31,6 +69,14 @@
           </svg>
           <span>사용량</span>
         </button>
+        <button id="settings-btn" type="button" title="설정" aria-label="설정">
+          <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden="true">
+            <circle cx="6.5" cy="6.5" r="1.8" stroke="currentColor" stroke-width="1.3"/>
+            <path d="M6.5 1.2v1.6M6.5 10.2v1.6M1.2 6.5h1.6M10.2 6.5h1.6M2.7 2.7l1.1 1.1M9.2 9.2l1.1 1.1M10.3 2.7L9.2 3.8M3.8 9.2l-1.1 1.1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+          </svg>
+          <span>설정</span>
+          <span id="settings-update-dot" hidden></span>
+        </button>
         <span id="server-status" role="status" aria-label="서버 상태"></span>
       </div>
     </aside>
@@ -40,6 +86,14 @@
           <span id="chat-title"></span>
           <span id="model-label"></span>
           <span id="context-meter"></span>
+          <button id="model-select" class="pill" type="button" title="모델 선택"></button>
+          <button id="swarm-toggle" class="pill" type="button" hidden>Swarm</button>
+          <button id="panel-toggle-btn" type="button" title="작업 패널" aria-label="작업 패널">
+            <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden="true">
+              <rect x="1.5" y="2.2" width="10" height="8.6" rx="2" stroke="currentColor" stroke-width="1.3"/>
+              <path d="M8.6 2.2v8.6" stroke="currentColor" stroke-width="1.3"/>
+            </svg>
+          </button>
           <button id="abort-btn" type="button" hidden>중단</button>
         </header>
         <div id="transcript"></div>
@@ -57,7 +111,31 @@
         <div id="session-usage"></div>
       </section>
     </main>
+    <!-- Right agent-work panel (R3 owns behavior). -->
+    <aside id="panel" hidden>
+      <div id="panel-header">
+        <span id="panel-title"></span>
+        <button id="panel-close-btn" type="button" title="패널 닫기" aria-label="패널 닫기">
+          <svg width="11" height="11" viewBox="0 0 11 11" fill="none" aria-hidden="true">
+            <path d="M2 2l7 7M9 2L2 9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </div>
+      <div id="panel-content">
+        <div id="panel-status"></div>
+        <div id="panel-tasks"></div>
+        <div id="panel-activity"></div>
+        <div id="panel-files"></div>
+      </div>
+    </aside>
   </div>
+  <!-- Spotlight-style content search (R2 owns behavior). -->
+  <div id="search-palette" hidden>
+    <input id="search-input" type="search" placeholder="대화 내용 검색…" aria-label="대화 내용 검색">
+    <div id="search-results"></div>
+  </div>
+  <!-- Settings modal mount point (R4 owns behavior). -->
+  <div id="settings-root"></div>
   <div id="modal-root"></div>
   <!-- Fatal boot error (CLI missing / server launch failed). Inline styles keep it
        legible regardless of stylesheet state; design agent may restyle later. -->
@@ -77,9 +155,15 @@
   </div>
   <script src="vendor/marked.min.js"></script>
   <script src="vendor/highlight.min.js"></script>
+  <script src="js/i18n.js"></script>
   <script src="js/markdown.js"></script>
   <script src="js/chat.js"></script>
   <script src="js/approvals.js"></script>
+  <script src="js/onboarding.js"></script>
+  <script src="js/search.js"></script>
+  <script src="js/panel.js"></script>
+  <script src="js/settings.js"></script>
+  <script src="js/chat-options.js"></script>
   <script src="js/sidebar.js"></script>
   <script src="js/usage.js"></script>
   <script src="js/app.js"></script>

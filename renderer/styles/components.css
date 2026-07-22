@@ -1,23 +1,34 @@
 /* ==========================================================================
    Kimi Desktop — components.css
    Messages, markdown, tool rows, buttons, composer input, modals,
-   usage cards, badges. Icons are CSS masks (data-URI SVG) so no image
-   assets are required inside components.
+   usage cards, badges, v2 chrome ghost-icon pills. Icons are CSS masks
+   (data-URI SVG) so no image assets are required inside components.
    Contract classes: .msg-user .msg-assistant .msg-thinking .msg-tool
    (.running/.done/.error) .md .modal-backdrop .modal .usage-card
    .usage-card-title .usage-card-value .progress-bar .btn .btn-primary
-   .btn-ghost .badge .pill — ids per ARCHITECTURE.md.
+   .btn-ghost .badge .pill — ids per ARCHITECTURE.md / CONTRACT-V2.md.
    Inner-element hooks (documented in docs/design.md):
    .msg-tool-header, .tool-status, .tool-chevron, .tool-name, .tool-summary,
    .msg-tool-body, .msg-thinking-body, .code-block, .code-block-header,
    .code-lang, .code-copy-btn, .progress-fill, .modal-title, .modal-body,
    .modal-actions. Expand/collapse toggle class: .expanded.
+   Shell hooks (sidebar.js / usage.js / app.js): .session-group (layout.css),
+   .usage-card-grid (layout.css), .usage-card-caption, .usage-open-btn,
+   .usage-row(-label/-value), .usage-detail, .usage-context, .usage-empty,
+   .usage-section-title, #boot-error.
+   DARK-FIRST: base rules render the black-premium dark theme; rules scoped
+   under :root[data-theme="light"] restore the v1 Apple light look.
    ========================================================================== */
 
 /* Shared mask defaults for CSS-drawn glyphs */
 .tool-chevron,
 .tool-status,
-#send-btn::before {
+#send-btn::before,
+#search-open-btn::before,
+#settings-btn::before,
+#panel-toggle-btn::before,
+#swarm-toggle::before,
+#model-select::after {
   -webkit-mask-repeat: no-repeat;
   mask-repeat: no-repeat;
   -webkit-mask-position: center;
@@ -412,7 +423,9 @@
   font-weight: 600;
 }
 
-/* ---- Minimal hljs theme (Xcode-ish); no vendor theme CSS required ---- */
+/* ---- Minimal hljs theme (dark Xcode-ish base; no vendor theme CSS
+   required). Dark-first: base rules are the dark palette; the light
+   palette is scoped to :root[data-theme="light"]. ---- */
 .hljs {
   color: var(--text);
   background: transparent;
@@ -430,37 +443,37 @@
 .hljs-selector-id,
 .hljs-name,
 .hljs-tag {
-  color: #9b2393;
+  color: #fc5fa3;
 }
 
 .hljs-string,
 .hljs-regexp,
 .hljs-addition {
-  color: #c41a16;
+  color: #fc6a5d;
 }
 
 .hljs-number,
 .hljs-literal {
-  color: #1c00cf;
+  color: #d0bf69;
 }
 
 .hljs-title,
 .hljs-title.function_,
 .hljs-section {
-  color: #326d74;
+  color: #67b7a4;
 }
 
 .hljs-attr,
 .hljs-attribute,
 .hljs-variable,
 .hljs-template-variable {
-  color: #3e6e9b;
+  color: #83c9bc;
 }
 
 .hljs-type,
 .hljs-title.class_,
 .hljs-built_in {
-  color: #5b269a;
+  color: #d0a8ff;
 }
 
 .hljs-meta,
@@ -468,55 +481,54 @@
   color: #6c7986;
 }
 
-@media (prefers-color-scheme: dark) {
-  .hljs-comment,
-  .hljs-quote {
-    color: #6c7986;
-  }
+:root[data-theme="light"] .hljs-comment,
+:root[data-theme="light"] .hljs-quote {
+  color: #6c7986;
+  font-style: italic;
+}
 
-  .hljs-keyword,
-  .hljs-selector-tag,
-  .hljs-selector-class,
-  .hljs-selector-id,
-  .hljs-name,
-  .hljs-tag {
-    color: #fc5fa3;
-  }
+:root[data-theme="light"] .hljs-keyword,
+:root[data-theme="light"] .hljs-selector-tag,
+:root[data-theme="light"] .hljs-selector-class,
+:root[data-theme="light"] .hljs-selector-id,
+:root[data-theme="light"] .hljs-name,
+:root[data-theme="light"] .hljs-tag {
+  color: #9b2393;
+}
 
-  .hljs-string,
-  .hljs-regexp,
-  .hljs-addition {
-    color: #fc6a5d;
-  }
+:root[data-theme="light"] .hljs-string,
+:root[data-theme="light"] .hljs-regexp,
+:root[data-theme="light"] .hljs-addition {
+  color: #c41a16;
+}
 
-  .hljs-number,
-  .hljs-literal {
-    color: #d0bf69;
-  }
+:root[data-theme="light"] .hljs-number,
+:root[data-theme="light"] .hljs-literal {
+  color: #1c00cf;
+}
 
-  .hljs-title,
-  .hljs-title.function_,
-  .hljs-section {
-    color: #67b7a4;
-  }
+:root[data-theme="light"] .hljs-title,
+:root[data-theme="light"] .hljs-title.function_,
+:root[data-theme="light"] .hljs-section {
+  color: #326d74;
+}
 
-  .hljs-attr,
-  .hljs-attribute,
-  .hljs-variable,
-  .hljs-template-variable {
-    color: #83c9bc;
-  }
+:root[data-theme="light"] .hljs-attr,
+:root[data-theme="light"] .hljs-attribute,
+:root[data-theme="light"] .hljs-variable,
+:root[data-theme="light"] .hljs-template-variable {
+  color: #3e6e9b;
+}
 
-  .hljs-type,
-  .hljs-title.class_,
-  .hljs-built_in {
-    color: #d0a8ff;
-  }
+:root[data-theme="light"] .hljs-type,
+:root[data-theme="light"] .hljs-title.class_,
+:root[data-theme="light"] .hljs-built_in {
+  color: #5b269a;
+}
 
-  .hljs-meta,
-  .hljs-deletion {
-    color: #6c7986;
-  }
+:root[data-theme="light"] .hljs-meta,
+:root[data-theme="light"] .hljs-deletion {
+  color: #6c7986;
 }
 
 /* ==========================================================================
@@ -633,6 +645,159 @@
 }
 
 /* ==========================================================================
+   v2 chrome: ghost-icon pills
+   #model-select + #swarm-toggle (chat options, carry .pill in the DOM
+   contract — restyled as ghosts here), #panel-toggle-btn in the chat
+   header; #search-open-btn in the sidebar header; #settings-btn in the
+   sidebar footer. Transparent 12px pills with a 26px hit area; glyphs are
+   12px CSS masks tinted currentColor, hidden automatically if the markup
+   uses an inline <svg> instead.
+   ========================================================================== */
+
+#model-select,
+#swarm-toggle,
+#panel-toggle-btn,
+#settings-btn,
+#search-open-btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 6px;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  border-radius: 999px;
+  white-space: nowrap;
+  overflow: hidden;
+  cursor: default;
+  user-select: none;
+}
+
+#model-select:hover,
+#swarm-toggle:hover,
+#panel-toggle-btn:hover,
+#settings-btn:hover,
+#search-open-btn:hover {
+  background: var(--hover-bg);
+  color: var(--text);
+}
+
+#model-select:active,
+#swarm-toggle:active,
+#panel-toggle-btn:active,
+#settings-btn:active,
+#search-open-btn:active {
+  background: var(--active-bg);
+}
+
+/* Icon-only buttons draw their glyph via ::before */
+#search-open-btn::before,
+#settings-btn::before,
+#panel-toggle-btn::before {
+  content: "";
+  flex: none;
+  width: 12px;
+  height: 12px;
+  background: currentColor;
+}
+
+#search-open-btn::before {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Ccircle cx='5' cy='5' r='3.2' fill='none' stroke='black' stroke-width='1.3'/%3E%3Cpath d='M7.3 7.3 10.3 10.3' fill='none' stroke='black' stroke-width='1.3' stroke-linecap='round'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Ccircle cx='5' cy='5' r='3.2' fill='none' stroke='black' stroke-width='1.3'/%3E%3Cpath d='M7.3 7.3 10.3 10.3' fill='none' stroke='black' stroke-width='1.3' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+
+#settings-btn::before {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Ccircle cx='6' cy='6' r='2' fill='none' stroke='black' stroke-width='1.2'/%3E%3Cpath d='M6 1.2v1.6M6 9.2v1.6M1.2 6h1.6M9.2 6h1.6M2.6 2.6l1.1 1.1M8.3 8.3l1.1 1.1M9.4 2.6 8.3 3.7M3.7 8.3 2.6 9.4' fill='none' stroke='black' stroke-width='1.2' stroke-linecap='round'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Ccircle cx='6' cy='6' r='2' fill='none' stroke='black' stroke-width='1.2'/%3E%3Cpath d='M6 1.2v1.6M6 9.2v1.6M1.2 6h1.6M9.2 6h1.6M2.6 2.6l1.1 1.1M8.3 8.3l1.1 1.1M9.4 2.6 8.3 3.7M3.7 8.3 2.6 9.4' fill='none' stroke='black' stroke-width='1.2' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+
+#panel-toggle-btn::before {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Crect x='1.5' y='2.5' width='9' height='7' rx='1.5' fill='none' stroke='black' stroke-width='1.2'/%3E%3Cpath d='M7.5 2.5v7' fill='none' stroke='black' stroke-width='1.2'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Crect x='1.5' y='2.5' width='9' height='7' rx='1.5' fill='none' stroke='black' stroke-width='1.2'/%3E%3Cpath d='M7.5 2.5v7' fill='none' stroke='black' stroke-width='1.2'/%3E%3C/svg%3E");
+}
+
+/* Swarm toggle: leading node-graph glyph + text label (R4 owns the label) */
+#swarm-toggle::before {
+  content: "";
+  flex: none;
+  width: 12px;
+  height: 12px;
+  background: currentColor;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Ccircle cx='6' cy='2.6' r='1.5' fill='black'/%3E%3Ccircle cx='2.8' cy='8.8' r='1.5' fill='black'/%3E%3Ccircle cx='9.2' cy='8.8' r='1.5' fill='black'/%3E%3Cpath d='M5.2 3.9 3.6 7.6M6.8 3.9l1.6 3.7M4.4 8.8h3.2' fill='none' stroke='black' stroke-width='0.9'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Ccircle cx='6' cy='2.6' r='1.5' fill='black'/%3E%3Ccircle cx='2.8' cy='8.8' r='1.5' fill='black'/%3E%3Ccircle cx='9.2' cy='8.8' r='1.5' fill='black'/%3E%3Cpath d='M5.2 3.9 3.6 7.6M6.8 3.9l1.6 3.7M4.4 8.8h3.2' fill='none' stroke='black' stroke-width='0.9'/%3E%3C/svg%3E");
+}
+
+/* Swarm engaged state — whichever hook chat-options.js toggles works */
+#swarm-toggle.on,
+#swarm-toggle.active,
+#swarm-toggle[aria-pressed="true"] {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+#swarm-toggle.on:hover,
+#swarm-toggle.active:hover,
+#swarm-toggle[aria-pressed="true"]:hover {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* Model picker: truncating text label + dropdown chevron */
+#model-select {
+  max-width: 180px;
+}
+
+#model-select > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#model-select::after {
+  content: "";
+  flex: none;
+  width: 10px;
+  height: 10px;
+  background: currentColor;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M2.5 3.5 5 6.5 7.5 3.5' fill='none' stroke='black' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M2.5 3.5 5 6.5 7.5 3.5' fill='none' stroke='black' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+/* If markup uses an inline <svg>, the CSS glyph steps aside */
+#search-open-btn:has(svg)::before,
+#settings-btn:has(svg)::before,
+#panel-toggle-btn:has(svg)::before,
+#swarm-toggle:has(svg)::before {
+  display: none;
+}
+
+#search-open-btn svg,
+#settings-btn svg,
+#panel-toggle-btn svg,
+#swarm-toggle svg {
+  flex: none;
+  width: 12px;
+  height: 12px;
+}
+
+/* Update-available dot inside #settings-btn (app.js toggles [hidden]
+   and .has-update on the button when an update is downloaded) */
+#settings-update-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+/* ==========================================================================
    Composer input (card itself lives in layout.css: #composer-wrap)
    ========================================================================== */
 
@@ -709,10 +874,14 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.28);
+  background: rgba(0, 0, 0, 0.55);
   -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
   animation: modal-fade 0.15s ease-out;
+}
+
+:root[data-theme="light"] .modal-backdrop {
+  background: rgba(0, 0, 0, 0.28);
 }
 
 @keyframes modal-fade {
@@ -727,7 +896,7 @@
   max-height: calc(100vh - 96px);
   overflow-y: auto;
   padding: 20px;
-  background: var(--bg);
+  background: var(--surface-raised);
   border: 0.5px solid var(--border);
   border-radius: 14px;
   box-shadow: var(--shadow-modal);
@@ -815,6 +984,13 @@
    Usage cards
    ========================================================================== */
 
+/* Section headings emitted by usage.js inside #quota-cards / #session-usage */
+.usage-section-title {
+  margin-bottom: var(--space-2);
+  font-size: 15px;
+  font-weight: 600;
+}
+
 /* .usage-card > .usage-card-title + .usage-card-value + .progress-bar */
 .usage-card {
   display: flex;
@@ -838,10 +1014,32 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Optional third line (reset time, subtext) */
+/* Optional third line (reset time, subtext); .usage-card-caption is the
+   class usage.js actually emits, .usage-card-sub is the v1 hook name */
+.usage-card-caption,
 .usage-card-sub {
   font-size: 11px;
   color: var(--text-dim);
+}
+
+/* Small outline action inside a quota card ("열기" → web console) */
+.usage-open-btn {
+  align-self: flex-start;
+  margin-top: var(--space-1);
+  padding: 2px 10px;
+  font-size: 12px;
+  color: var(--accent);
+  background: transparent;
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius-s);
+}
+
+.usage-open-btn:hover {
+  background: var(--hover-bg);
+}
+
+.usage-open-btn:active {
+  background: var(--active-bg);
 }
 
 /* 4px rounded progress track; single inner div is the fill */
@@ -909,6 +1107,45 @@
   border-bottom: none;
 }
 
+/* Label/value rows inside .usage-detail (current-session usage) */
+.usage-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-1) 0;
+  font-size: 13px;
+}
+
+.usage-row + .usage-row {
+  border-top: 0.5px solid var(--border);
+}
+
+.usage-row-label {
+  color: var(--text-secondary);
+}
+
+.usage-row-value {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* Context-window block at the foot of .usage-detail */
+.usage-context {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 0.5px solid var(--border);
+}
+
+.usage-empty {
+  padding: var(--space-2) 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
 /* ==========================================================================
    Badges / pills (header metadata)
    ========================================================================== */
@@ -946,4 +1183,58 @@
 
 #context-meter {
   font-variant-numeric: tabular-nums;
+}
+
+/* ==========================================================================
+   Fatal boot error (#boot-error)
+   index.html carries matching inline styles so the layer renders even
+   before stylesheets load and app.js toggles style.display; these rules
+   keep the layer themed if the inline styles are ever dropped. Display
+   management stays with the inline style / app.js.
+   ========================================================================== */
+
+#boot-error {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  text-align: center;
+  background: var(--bg);
+  color: var(--text);
+}
+
+#boot-error h1 {
+  font-size: 17px;
+  font-weight: 600;
+}
+
+#boot-error p {
+  max-width: 420px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+#boot-error-message {
+  word-break: break-all;
+}
+
+#boot-retry-btn {
+  padding: 6px var(--space-3);
+  font-size: 13px;
+  color: var(--accent-text);
+  background: var(--accent);
+  border: none;
+  border-radius: var(--radius-s);
+}
+
+#boot-retry-btn:hover {
+  filter: brightness(1.08);
+}
+
+#boot-retry-btn:active {
+  filter: brightness(0.92);
 }

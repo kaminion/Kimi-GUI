@@ -1,0 +1,328 @@
+/* ==========================================================================
+   onboarding.css — splash + first-run onboarding (R1)
+   Black-premium on design tokens; every custom property carries an explicit
+   dark fallback so the screens look right even with v1 tokens. The splash is
+   a true-black brand screen; the onboarding overlay follows the theme.
+   Drives shell-owned contract DOM (CONTRACT-V2) — ids are fixed.
+   ========================================================================== */
+
+:root {
+  --onboarding-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* ---- Splash (brand screen: always true black, light mark) ---- */
+
+#splash {
+  position: fixed;
+  inset: 0;
+  z-index: 1000; /* above #boot-error (999) and everything else */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  background: #000;
+  color: #f5f5f7;
+  user-select: none;
+  -webkit-app-region: drag;
+}
+
+#splash[hidden],
+#onboarding[hidden],
+#onboarding [hidden] {
+  display: none !important;
+}
+
+#splash-logo {
+  width: 72px;
+  height: 72px;
+  color: #f5f5f7;
+  opacity: 0;
+  transform: scale(0.92);
+  will-change: opacity, transform;
+}
+
+#splash-logo svg {
+  width: 100%;
+  height: 100%;
+}
+
+#splash-word {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  opacity: 0;
+  transform: translateY(8px);
+  will-change: opacity, transform;
+}
+
+/* Logo fades + scales in (600ms); the wordmark follows 100ms later. */
+#splash.on #splash-logo {
+  opacity: 1;
+  transform: scale(1);
+  transition: opacity 0.6s var(--onboarding-ease), transform 0.6s var(--onboarding-ease);
+}
+
+#splash.on #splash-word {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 0.5s var(--onboarding-ease) 0.1s, transform 0.5s var(--onboarding-ease) 0.1s;
+}
+
+/* Exit: whole layer slides down 24px while fading (350ms). */
+#splash.out {
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity 0.35s var(--onboarding-ease), transform 0.35s var(--onboarding-ease);
+}
+
+/* ---- Onboarding overlay + card ---- */
+
+#onboarding {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  background: var(--bg, #000);
+  color: var(--text, #f5f5f7);
+  font-family: var(--font-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif);
+  user-select: none;
+  -webkit-app-region: drag;
+}
+
+#onboarding-card {
+  width: 420px;
+  max-width: 100%;
+  max-height: 100%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 32px;
+  text-align: center;
+  background: var(--bg-secondary, #0a0a0d);
+  border: 0.5px solid var(--border, rgba(255, 255, 255, 0.08));
+  border-radius: 14px;
+  box-shadow: var(--shadow-modal, 0 12px 40px rgba(0, 0, 0, 0.5));
+  -webkit-app-region: no-drag;
+}
+
+#onboarding:not([hidden]) #onboarding-card {
+  animation: onboarding-card-in 0.45s var(--onboarding-ease) both;
+}
+
+@keyframes onboarding-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
+#onboarding-logo {
+  width: 44px;
+  height: 44px;
+  margin: 0 auto 16px;
+  color: var(--text, #f5f5f7);
+}
+
+#onboarding-logo svg {
+  width: 100%;
+  height: 100%;
+}
+
+#onboarding-title {
+  margin-bottom: 8px;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text, #f5f5f7);
+}
+
+#onboarding-desc {
+  margin-bottom: 20px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-secondary, #98989f);
+  overflow-wrap: break-word;
+}
+
+#onboarding-desc.error {
+  color: var(--danger, #ff453a);
+}
+
+/* ---- Install progress (indeterminate by default; percent makes it determinate) ---- */
+
+#onboarding-progress {
+  margin-bottom: 20px;
+}
+
+#onboarding-progress .progress-bar {
+  height: 4px;
+  overflow: hidden;
+  background: var(--active-bg, rgba(255, 255, 255, 0.1));
+  border-radius: 2px;
+}
+
+#onboarding-progress .progress-bar > div {
+  width: 0;
+  height: 100%;
+  background: var(--accent, #0a84ff);
+  border-radius: inherit;
+  transition: width 0.3s ease;
+}
+
+#onboarding-progress.indeterminate .progress-bar > div {
+  width: 38%;
+  animation: onboarding-indeterminate 1.15s ease-in-out infinite;
+}
+
+@keyframes onboarding-indeterminate {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(280%);
+  }
+}
+
+#onboarding-progress-label {
+  display: block;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-dim, #6e6e73);
+}
+
+/* ---- Login (code + verification link + status) ---- */
+
+#onboarding-login {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+#login-code {
+  padding: 10px 20px;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace);
+  font-size: 28px;
+  letter-spacing: 0.12em;
+  color: var(--text, #f5f5f7);
+  background: var(--code-bg, #101013);
+  border: 0.5px solid var(--border, rgba(255, 255, 255, 0.08));
+  border-radius: 10px;
+  user-select: all;
+}
+
+#login-code[role="button"]:hover {
+  border-color: var(--text-dim, #6e6e73);
+}
+
+#login-url-btn {
+  padding: 6px 14px;
+  font-size: 13px;
+  color: var(--accent, #0a84ff);
+  background: transparent;
+  border-radius: 999px;
+}
+
+#login-url-btn:hover {
+  background: var(--accent-soft, rgba(10, 132, 255, 0.15));
+}
+
+#login-url-btn:disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+#login-status {
+  min-height: 16px;
+  font-size: 12px;
+  color: var(--text-dim, #6e6e73);
+}
+
+#login-status.error {
+  color: var(--danger, #ff453a);
+}
+
+/* ---- Actions ---- */
+
+#onboarding-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+
+/* .btn/.btn-primary/.btn-ghost base styles live in components.css */
+#onboarding-primary-btn {
+  width: 100%;
+  padding: 8px 16px;
+  font-size: 14px;
+}
+
+#onboarding-secondary-btn {
+  align-self: center;
+}
+
+/* ---- Login success: CSS checkmark draw (600ms total) ---- */
+
+.onboarding-check {
+  width: 56px;
+  height: 56px;
+  margin: 4px auto 20px;
+  color: var(--success, #30d158);
+}
+
+.onboarding-check svg {
+  width: 100%;
+  height: 100%;
+}
+
+.onboarding-check .check-circle,
+.onboarding-check .check-mark {
+  stroke: currentColor;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.onboarding-check .check-circle {
+  stroke-dasharray: 151; /* 2πr, r=24 */
+  stroke-dashoffset: 151;
+  animation: onboarding-draw 0.45s var(--onboarding-ease) forwards;
+}
+
+.onboarding-check .check-mark {
+  stroke-dasharray: 32;
+  stroke-dashoffset: 32;
+  animation: onboarding-draw 0.3s var(--onboarding-ease) 0.3s forwards;
+}
+
+@keyframes onboarding-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* ---- Reduced motion: JS skips the splash timing; kill residual CSS motion ---- */
+
+@media (prefers-reduced-motion: reduce) {
+  #splash,
+  #splash-logo,
+  #splash-word,
+  #onboarding-card,
+  #onboarding-progress .progress-bar > div {
+    transition: none !important;
+    animation: none !important;
+  }
+
+  .onboarding-check .check-circle,
+  .onboarding-check .check-mark {
+    animation: none !important;
+    stroke-dashoffset: 0 !important; /* a drawn check, not an invisible one */
+  }
+}

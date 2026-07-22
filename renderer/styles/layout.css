@@ -2,7 +2,9 @@
    Kimi Desktop — layout.css
    Window chrome and view structure: titlebar, sidebar, main column,
    chat header, transcript rhythm, composer card, usage grid.
-   All ids below are fixed by ARCHITECTURE.md's DOM contract.
+   All ids below are fixed by ARCHITECTURE.md / CONTRACT-V2 DOM contracts.
+   Dark-first: surfaces are lifted off true black via --surface-raised and
+   --bg-secondary; definition comes from 0.5px hairlines, not shadows.
    ========================================================================== */
 
 body {
@@ -46,17 +48,22 @@ body {
   border-right: 0.5px solid var(--border);
 }
 
+/* v2: header row holds #new-chat-btn (flexes) + #search-open-btn (icon) */
 #sidebar-header {
   flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   padding: var(--space-2);
 }
 
 #new-chat-btn {
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  width: 100%;
   padding: var(--space-1) var(--space-2);
   font-size: 13px;
   color: var(--text);
@@ -78,6 +85,50 @@ body {
   min-height: 0;
   overflow-y: auto;
   padding: 0 var(--space-2) var(--space-2);
+}
+
+/* Session groups (v1: 오늘/이전; v2: per-project, collapsible).
+   Collapse hook: sidebar.js toggles .collapsed on .session-group — items
+   hide and the label chevron snaps back to point right. Chevron convention
+   matches .tool-chevron: right-pointing base glyph, rotated 90° (down)
+   while the group is expanded. */
+.session-group + .session-group {
+  margin-top: var(--space-3);
+}
+
+.session-group-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-dim);
+  user-select: none;
+  cursor: default;
+}
+
+.session-group-label:hover {
+  color: var(--text-secondary);
+}
+
+.session-group-label > svg,
+.session-group-chevron {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  color: var(--text-dim);
+  transform: rotate(90deg); /* expanded by default: right-pointing glyph → down */
+  transition: transform 0.15s ease;
+}
+
+.session-group.collapsed .session-group-label > svg,
+.session-group.collapsed .session-group-chevron {
+  transform: none;
+}
+
+.session-group.collapsed .session-item {
+  display: none;
 }
 
 /* .session-item(.active)(.busy) > .session-title + .session-meta */
@@ -229,7 +280,10 @@ body {
   flex-direction: column;
 }
 
-/* ---- Chat header (translucent, bottom hairline) ---- */
+/* ---- Chat header (translucent, bottom hairline) ----
+   Right cluster (v2): #model-label, #context-meter, #model-select,
+   #swarm-toggle, #panel-toggle-btn, #abort-btn ride the 8px flex gap
+   after the flexible title; none of them shrink or wrap. */
 #chat-header {
   flex: none;
   min-height: 48px;
@@ -241,6 +295,10 @@ body {
   -webkit-backdrop-filter: saturate(180%) blur(20px);
   backdrop-filter: saturate(180%) blur(20px);
   border-bottom: 0.5px solid var(--border);
+}
+
+#chat-header > :not(#chat-title) {
+  flex: none;
 }
 
 #chat-title {
@@ -282,7 +340,7 @@ body {
   margin-top: var(--space-2);
 }
 
-/* ---- Composer: floating rounded card ---- */
+/* ---- Composer: floating rounded card, lifted one step off pure black ---- */
 #composer-wrap {
   flex: none;
   display: flex;
@@ -292,7 +350,7 @@ body {
   max-width: 760px;
   margin: 0 auto var(--space-3);
   padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
-  background: var(--bg);
+  background: var(--surface-raised);
   border: 0.5px solid var(--border);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-card);
@@ -303,7 +361,7 @@ body {
   box-shadow: var(--shadow-card), 0 0 0 3px var(--accent-soft);
 }
 
-/* ---- Usage view: grid of cards ---- */
+/* ---- Usage view: section title + grid of cards ---- */
 #usage-view {
   flex: 1;
   min-height: 0;
@@ -311,12 +369,16 @@ body {
   padding: var(--space-4) var(--space-3) var(--space-6);
 }
 
+/* usage.js emits h2.usage-section-title + .usage-card-grid inside here */
 #quota-cards {
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.usage-card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: var(--space-3);
-  max-width: 960px;
-  margin: 0 auto;
 }
 
 #session-usage {

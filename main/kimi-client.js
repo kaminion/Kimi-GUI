@@ -147,6 +147,37 @@ class KimiClient extends EventEmitter {
   getSessionStatus(id) { return this.request('GET', `/sessions/${encodeURIComponent(id)}/status`); }
 
   /**
+   * Set the session's model: POST /profile {agent_config:{model}} (verified:
+   * GET /status then reports the model; the profile response body itself may
+   * still echo stale agent_config on 0.28.1 — re-read status for truth).
+   */
+  setSessionModel(id, model) {
+    return this.request('POST', `/sessions/${encodeURIComponent(id)}/profile`, {
+      agent_config: { model: String(model) },
+    });
+  }
+
+  /**
+   * Enable/disable swarm mode for a session (verified live: POST /profile
+   * {agent_config:{swarm_mode}} merges into agent_config, GET /status reflects
+   * it as swarm_mode).
+   */
+  setSessionSwarm(id, enabled) {
+    return this.request('POST', `/sessions/${encodeURIComponent(id)}/profile`, {
+      agent_config: { swarm_mode: Boolean(enabled) },
+    });
+  }
+
+  /**
+   * Background tasks for a session (subagent/bash/tool):
+   * [{id, session_id, kind, description, status, command?, created_at, ...}].
+   */
+  listTasks(id) {
+    return this.request('GET', `/sessions/${encodeURIComponent(id)}/tasks`)
+      .then((d) => d?.items ?? []);
+  }
+
+  /**
    * Create a session rooted at `cwd`. The daemon ignores `agent_config.model`
    * in the create body (0.28.1), so the model is applied via POST /profile.
    * Falls back to the daemon's default model when `model` is omitted —

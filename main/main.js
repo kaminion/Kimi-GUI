@@ -3,12 +3,16 @@
 /**
  * main.js — Electron main process entry point.
  *
- * Lifecycle (per ARCHITECTURE.md):
+ * Lifecycle (per ARCHITECTURE.md + CONTRACT-V2):
  *   single-instance lock -> create BrowserWindow (1100x720, min 840x560,
  *   hiddenInset + sidebar vibrancy on macOS, contextIsolation on, no
  *   nodeIntegration) -> load renderer/index.html -> KimiClient.launch() ->
  *   wire IPC + event forwarding -> graceful shutdown on before-quit.
  *
+ * V2: the renderer owns first-run routing (splash -> onboarding when the CLI
+ * or login is missing), so a failed backend launch is surfaced as a status
+ * event only — v1's full-screen fatal error page is gone. `kimi:bootstrapRetry`
+ * (retryBackend below) re-runs the launch once onboarding completes.
  * main/kimi-client.js is provided by another agent; the require is lazy so
  * this file loads (and syntax-checks) even while that file is absent.
  */
@@ -17,6 +21,7 @@ const { app, BrowserWindow } = require('electron');
 const path = require('node:path');
 
 const { registerIpc, wireClientEvents } = require('./ipc');
+const { resolveKimiPath } = require('./server-manager');
 
 const isMac = process.platform === 'darwin';
 
@@ -68,7 +73,7 @@ function createWindow() {
     minWidth: 840,
     minHeight: 560,
     ...(isMac ? { titleBarStyle: 'hiddenInset', vibrancy: 'sidebar' } : {}),
-    backgroundColor: '#f5f5f7',
+    backgroundColor: '#000000', // v2 is dark-first (true black)
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
@@ -92,55 +97,35 @@ function createWindow() {
   mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
 }
 
-/** Full-screen fatal error page (Korean UI copy) when the CLI is missing. */
-function showFatalErrorPage(err) {
-  if (!mainWindow || mainWindow.isDestroyed()) return;
-  const message = String(err && err.message ? err.message : err).slice(0, 500);
-  const html = `<!doctype html>
-<html lang="ko"><head><meta charset="utf-8"><title>Kimi Desktop</title>
-<style>
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-         display: flex; align-items: center; justify-content: center; height: 100vh;
-         margin: 0; background: #f5f5f7; color: #1d1d1f; }
-  main { max-width: 520px; padding: 32px; }
-  h1 { font-size: 20px; margin: 0 0 12px; }
-  p { font-size: 13px; line-height: 1.6; color: #6e6e73; margin: 8px 0; }
-  code { font-family: 'SF Mono', Menlo, monospace; font-size: 12px;
-         background: rgba(0,0,0,0.05); padding: 1px 5px; border-radius: 4px; }
-  .detail { margin-top: 16px; font-size: 11px; color: #86868b; word-break: break-all; }
-</style></head>
-<body><main>
-  <h1>Kimi Code CLI를 찾을 수 없습니다</h1>
-  <p>Kimi Desktop을 사용하려면 Kimi Code CLI(<code>kimi</code>)가 설치되어 있어야 합니다.</p>
-  <p>확인한 경로: <code>KIMI_CLI_PATH</code> 환경 변수, <code>PATH</code>, <code>~/.kimi-code/bin/kimi</code></p>
-  <p class="detail"></p>
-</main></body></html>`;
-  const url = `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
-  mainWindow.loadURL(url);
-  // Put the detail text in safely after load (avoid HTML-escaping issues above).
-  mainWindow.webContents.once('did-finish-load', () => {
-    mainWindow.webContents.executeJavaScript(
-      `document.querySelector('.detail').textContent = ${JSON.stringify(message)}`,
-    );
+// Guard against concurrent launches (initial launch vs. kimi:bootstrapRetry).
+let launchPromise = null;
+
+function launchBackend() {
+  if (launchPromise) return launchPromise;
+  launchPromise = doLaunchBackend().finally(() => {
+    launchPromise = null;
   });
+  return launchPromise;
 }
 
-async function launchBackend() {
+async function doLaunchBackend() {
   let client;
   let child;
   let token;
   let baseUrl;
   try {
-    const KimiClient = loadKimiClient();
-    ({ client, child, baseUrl, token } = await KimiClient.launch({}));
+    const { KimiClient } = loadKimiClient(); // module exports { KimiClient, KimiApiError }
+    // Resolve the binary explicitly (env KIMI_CLI_PATH -> PATH lookup ->
+    // ~/.kimi-code/bin) so a CLI installed by onboarding is found even when
+    // the app was launched from Finder with a minimal PATH.
+    const kimiPath = await resolveKimiPath();
+    ({ client, child, baseUrl, token } = await KimiClient.launch({ kimiPath }));
   } catch (err) {
     state.ready = false;
     state.error = err.message;
     console.error(`[kimi-desktop] backend launch failed: ${state.error}`);
+    // No fatal page in v2: the renderer routes to onboarding / surfaces this.
     broadcast({ type: 'status', ready: false, error: state.error });
-    const cliMissing =
-      err.code === 'KIMI_CLI_NOT_FOUND' || /not found|ENOENT/i.test(String(err.message));
-    if (cliMissing) showFatalErrorPage(err);
     return;
   }
 
@@ -170,12 +155,56 @@ async function launchBackend() {
   if (child) {
     child.once('exit', (code, signal) => {
       if (isQuitting) return;
+      if (state.client !== client) return; // superseded by a bootstrapRetry re-launch
       state.ready = false;
       state.client = null;
       state.token = null;
       state.error = `kimi server exited unexpectedly (code ${code}, signal ${signal})`;
       broadcast({ type: 'status', ready: false, error: state.error });
     });
+  }
+}
+
+/**
+ * kimi:bootstrapRetry — re-run the backend launch after onboarding completes
+ * (the first launch may have failed with no CLI installed). Shuts down any
+ * previous client, then launches fresh and re-wires event forwarding.
+ * Returns the fresh app state.
+ */
+async function retryBackend() {
+  const previous = state.client;
+  state.client = null;
+  state.token = null;
+  state.ready = false;
+  state.error = null;
+  if (previous) {
+    try {
+      await previous.shutdown();
+    } catch (err) {
+      console.warn(`[kimi-desktop] previous client shutdown failed: ${err.message}`);
+    }
+  }
+  await launchBackend();
+  return getAppState();
+}
+
+/**
+ * Single silent update-check on launch, packaged builds only. The updater is
+ * M3's module: ipc.js already calls its register({ipcMain, send}) when present
+ * (which per contract performs the launch check); if it also exports
+ * checkSilently({ send }) we call that instead — both paths are guarded so a
+ * missing/broken module is a no-op, never a crash.
+ */
+function maybeAutoCheckUpdates() {
+  if (!app.isPackaged) return;
+  try {
+    // eslint-disable-next-line global-require
+    const updater = require('./updater');
+    if (updater && typeof updater.checkSilently === 'function') {
+      updater.checkSilently({ send: broadcast });
+    }
+  } catch (err) {
+    console.warn(`[kimi-desktop] silent update check skipped: ${err.message}`);
   }
 }
 
@@ -199,9 +228,11 @@ if (!gotLock) {
       getToken: () => state.token,
       getWindow: () => mainWindow,
       broadcast,
+      retryBackend,
     });
     createWindow();
     launchBackend();
+    maybeAutoCheckUpdates();
   });
 
   // Single-window utility: closing the window quits the app (and the server).
@@ -210,6 +241,13 @@ if (!gotLock) {
   });
 
   app.on('before-quit', (event) => {
+    // Drop any dangling `kimi login` child from onboarding.
+    try {
+      // eslint-disable-next-line global-require
+      require('./onboarding').cancelLogin();
+    } catch {
+      /* onboarding module absent */
+    }
     if (isQuitting || !state.client) return;
     isQuitting = true;
     event.preventDefault();
