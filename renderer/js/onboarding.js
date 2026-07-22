@@ -275,7 +275,7 @@
     loginActive = false;
     setStepUI({
       title: T('onboarding.login_title', 'Kimi 로그인'),
-      desc: T('onboarding.login_desc', '브라우저에서 인증 코드를 입력해 로그인합니다'),
+      desc: T('onboarding.login_desc', '브라우저에서 인증 코드를 입력해 로그인합니다.'),
       primary: T('onboarding.login_start', '로그인 시작'),
     });
   }
@@ -292,7 +292,7 @@
     lastStepUI = () => showLoginWaiting(userCode, verificationUrl);
     setStepUI({
       title: T('onboarding.login_title', 'Kimi 로그인'),
-      desc: T('onboarding.login_desc', '브라우저에서 인증 코드를 입력해 로그인합니다'),
+      desc: T('onboarding.login_desc', '브라우저에서 인증 코드를 입력해 로그인합니다.'),
       secondary: T('onboarding.cancel', '취소'),
       showLogin: true,
     });
@@ -317,7 +317,7 @@
     loginActive = false;
     setStepUI({
       title: T('onboarding.login_title', 'Kimi 로그인'),
-      desc: T('onboarding.login_desc', '브라우저에서 인증 코드를 입력해 로그인합니다'),
+      desc: T('onboarding.login_desc', '브라우저에서 인증 코드를 입력해 로그인합니다.'),
       primary: T('onboarding.retry', '다시 시도'),
       secondary: T('onboarding.cancel', '취소'),
       showLogin: true,

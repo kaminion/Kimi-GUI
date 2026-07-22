@@ -48,11 +48,11 @@
   <div id="app">
     <aside id="sidebar">
       <div id="sidebar-header">
-        <button id="new-chat-btn" type="button" title="New Chat (⌘N)" data-i18n-title="sidebar.new_chat_title">
+        <button id="new-chat-btn" type="button" title="New chat (⌘N)" data-i18n-title="sidebar.new_chat_title">
           <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden="true">
             <path d="M6.5 1.5v10M1.5 6.5h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
           </svg>
-          <span data-i18n="chat.new_chat">New Chat</span>
+          <span data-i18n="chat.new_chat">New chat</span>
         </button>
         <button id="search-open-btn" type="button" title="Search (⌘F)" aria-label="Search"
                 data-i18n-title="search.open_title" data-i18n-aria="search.open_aria">
@@ -88,9 +88,9 @@
           <span id="chat-title"></span>
           <span id="model-label"></span>
           <span id="context-meter"></span>
-          <button id="model-select" class="pill" type="button" title="Select Model" data-i18n-title="options.model.pick"></button>
-          <button id="swarm-toggle" class="pill" type="button" hidden>Swarm</button>
-          <button id="panel-toggle-btn" type="button" title="Agent Panel" aria-label="Agent Panel"
+          <button id="model-select" class="pill" type="button" title="Select model" data-i18n-title="options.model.pick"></button>
+          <button id="swarm-toggle" class="pill" type="button" hidden></button>
+          <button id="panel-toggle-btn" type="button" title="Agent panel" aria-label="Agent panel"
                   data-i18n-title="panel.toggle" data-i18n-aria="panel.toggle">
             <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden="true">
               <rect x="1.5" y="2.2" width="10" height="8.6" rx="2" stroke="currentColor" stroke-width="1.3"/>
@@ -120,7 +120,7 @@
     <aside id="panel" hidden>
       <div id="panel-header">
         <span id="panel-title"></span>
-        <button id="panel-close-btn" type="button" title="Close Panel" aria-label="Close Panel"
+        <button id="panel-close-btn" type="button" title="Close panel" aria-label="Close panel"
                 data-i18n-title="panel.close" data-i18n-aria="panel.close">
           <svg width="11" height="11" viewBox="0 0 11 11" fill="none" aria-hidden="true">
             <path d="M2 2l7 7M9 2L2 9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
@@ -150,7 +150,7 @@
        flex-direction:column; align-items:center; justify-content:center; gap:16px;
        padding:32px; text-align:center; background:var(--bg, #fff); color:var(--text, #1d1d1f);
        font-family:var(--font-ui, -apple-system, sans-serif);">
-    <h1 style="font-size:17px; font-weight:600; margin:0;" data-i18n="app.boot_error_title">Kimi Couldn’t Start</h1>
+    <h1 style="font-size:17px; font-weight:600; margin:0;" data-i18n="app.boot_error_title">Kimi couldn’t start</h1>
     <p id="boot-error-message" style="font-size:13px; margin:0; max-width:420px;
        color:var(--text-secondary, #6e6e73); word-break:break-all;"></p>
     <p style="font-size:12px; margin:0; max-width:420px; color:var(--text-dim, #86868b);"
@@ -158,7 +158,7 @@
     <button id="boot-retry-btn" type="button" style="font-size:13px; padding:6px 16px;
       border:none; border-radius:6px; cursor:pointer;
       background:var(--accent, #007AFF); color:var(--accent-text, #fff);"
-      data-i18n="app.boot_retry">Try Again</button>
+      data-i18n="app.boot_retry">Try again</button>
   </div>
   <script src="../vendor/marked.min.js"></script>
   <script src="../vendor/highlight.min.js"></script>
