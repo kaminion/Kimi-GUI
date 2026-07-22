@@ -18,8 +18,12 @@
  * once onboarding completes.
  */
 
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, nativeImage } = require('electron');
 const path = require('node:path');
+
+// Brand: menu bar / Dock label in dev; packaged builds use productName + icns/ico.
+app.setName('kimi-gui');
+const APP_ICON = path.join(__dirname, '..', 'assets', 'icon.png');
 
 const backend = require('./backend');
 const { registerIpc } = require('./ipc');
@@ -42,6 +46,7 @@ function createWindow() {
     height: 720,
     minWidth: 840,
     minHeight: 560,
+    icon: APP_ICON, // window/taskbar icon (win/linux; mac uses icns via builder)
     ...(isMac ? { titleBarStyle: 'hiddenInset', vibrancy: 'sidebar' } : {}),
     backgroundColor: '#000000', // dark-first (true black)
     webPreferences: {
@@ -101,6 +106,8 @@ if (!gotLock) {
   });
 
   app.whenReady().then(() => {
+    // Dev mode shows the Electron dock icon by default — use ours (packaged mac uses the icns).
+    if (isMac) app.dock?.setIcon(nativeImage.createFromPath(APP_ICON));
     registerIpc({
       backend,
       getWindow: () => mainWindow,
