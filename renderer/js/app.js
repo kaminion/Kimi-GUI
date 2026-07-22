@@ -7,6 +7,7 @@
   const intFmt = new Intl.NumberFormat('ko-KR');
   const LAST_CWD_KEY = 'kimi.lastCwd';
   const DEFAULT_MODEL_KEY = 'kimi.defaultModel';
+  const DEFAULT_SWARM_KEY = 'kimi.defaultSwarm'; // v4 (R2): settings 스웜 기본값
 
   let refreshTimer = null;
   let unsubscribeEvents = null;   // guard against double-subscribe on re-entry
@@ -23,6 +24,7 @@
       activeId: null,      // selected session id (null = draft new chat)
       view: 'chat',        // 'chat' | 'usage'
       serverReady: false,  // live WS/server status from 'status' events
+      engine: null,        // 'direct' | 'cli' from getState (v4: swarm default gate)
     },
 
     /** Re-fetch the session list; re-render sidebar and header affordances. */
@@ -142,6 +144,7 @@
           // The server ignores agent_config.model in the create body, so the
           // model must be set via the profile endpoint before the first prompt.
           await applyDefaultModel(session.id);
+          await applyDefaultSwarm(session.id); // v4 (R2): settings 스웜 기본값
           await App.refreshSessions();
           App.state.activeId = session.id;
           window.Sidebar?.render?.(App.state);
@@ -270,6 +273,29 @@
       }
     } catch (err) {
       console.error('setSessionModel failed (best-effort)', err);
+    }
+  }
+
+  function readStoredDefaultSwarm() {
+    try { return localStorage.getItem(DEFAULT_SWARM_KEY) === '1'; } catch (_) { return false; }
+  }
+
+  /**
+   * v4 (R2): apply the configured swarm default (settings '스웜 기본값') to a
+   * fresh session. CLI agent mode only — the preload omits setSessionSwarm
+   * under the direct engine, which the feature-check also covers.
+   */
+  async function applyDefaultSwarm(sessionId) {
+    try {
+      if (
+        readStoredDefaultSwarm() &&
+        App.state.engine === 'cli' &&
+        typeof window.kimi.setSessionSwarm === 'function'
+      ) {
+        await window.kimi.setSessionSwarm(sessionId, true);
+      }
+    } catch (err) {
+      console.error('setSessionSwarm failed (best-effort)', err);
     }
   }
 
@@ -430,9 +456,9 @@
     $('#panel-toggle-btn')?.addEventListener('click', () => {
       safeCall(() => window.Panel?.toggle?.());
     });
-    $('#panel-close-btn')?.addEventListener('click', () => {
-      safeCall(() => window.Panel?.toggle?.());
-    });
+    // v4 (R2): #panel-close-btn is wired by panel.js itself (setOpen(false)).
+    // Wiring it here too called Panel.toggle() after the close and reopened
+    // the panel — do not re-add a listener for it.
     window.addEventListener('keydown', (e) => {
       if (!(e.metaKey || e.ctrlKey)) return;
       if (e.key.toLowerCase() === 'n') {
@@ -524,6 +550,7 @@
     App.state.ready = true;
     App.state.version = state.version ?? null;
     App.state.defaultModel = state.defaultModel ?? null;
+    App.state.engine = state.engine ?? null;
     setServerStatus(true);
     initChatOptionsOnce();
     if (!unsubscribeEvents) unsubscribeEvents = window.kimi.onEvent(handleEvent);

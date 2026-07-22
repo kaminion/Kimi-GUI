@@ -6,6 +6,7 @@
  *   일반     — language segment (한국어/English) + theme segment (시스템/다크/라이트)
  *   모델     — default model for NEW sessions (localStorage 'kimi.defaultModel');
  *             App applies it right after createSession via Settings.getDefaultModel()
+ *             + v4: 스웜 기본값 toggle (localStorage 'kimi.defaultSwarm', CLI 전용)
  *   엔진     — engine picker (v3): 내장 엔진(direct, 기본) vs Kimi Code CLI(에이전트
  *             모드); switching asks to confirm, then setEngine + location.reload().
  *             Under the CLI card: CLI install status + manual install button with
@@ -26,6 +27,7 @@
   const LS_LANG = 'kimi.lang';
   const LS_THEME = 'kimi.theme';
   const LS_DEFAULT_MODEL = 'kimi.defaultModel';
+  const LS_DEFAULT_SWARM = 'kimi.defaultSwarm'; // v4: '1' | '0' (스웜 기본값)
   const CONSOLE_URL = 'https://www.kimi.com/code/console';
 
   let backdropEl = null;      // .modal-backdrop.settings-backdrop while open
@@ -34,6 +36,7 @@
   let onboardingState = null; // cached onboardingGetState() result
   let appVersion = null;      // cached getAppVersion() result
   let login = null;           // { pending, userCode?, verificationUrl? } while re-login runs
+                              // (v4: verificationUrl stores verificationUrlComplete ?? verificationUrl)
   let loginError = null;      // last re-login failure message
   let updateState = null;     // last known { status, version?, message? }
   let engineInfo = null;      // cached getState() { engine, cliInstalled } for the 엔진 section
@@ -166,6 +169,22 @@
       T('settings.model.default', '기본 모델'),
       select,
       T('settings.model.desc', '새 대화에 적용되는 모델입니다.')
+    ));
+
+    // v4 (R2): swarm default for NEW sessions — app.js applies it right after
+    // createSession (CLI engine) and chat-options seeds the pill from it.
+    const swarmSeg = buildSegment(
+      [
+        { value: '1', label: T('settings.swarm_default.on', '켬') },
+        { value: '0', label: T('settings.swarm_default.off', '끔') },
+      ],
+      lsGet(LS_DEFAULT_SWARM) === '1' ? '1' : '0',
+      (v) => { lsSet(LS_DEFAULT_SWARM, v); rerender(); }
+    );
+    content.appendChild(buildRow(
+      T('settings.swarm_default', '스웜 기본값'),
+      swarmSeg,
+      T('settings.swarm_default_desc', '새 대화에 적용 · CLI 에이전트 모드 전용')
     ));
 
     if (typeof window.kimi?.listModels !== 'function') {
@@ -421,7 +440,9 @@
       const res = await window.kimi.onboardingStartLogin();
       if (!login) return; // cancelled meanwhile
       login.userCode = res?.userCode ?? null;
-      login.verificationUrl = res?.verificationUrl ?? null;
+      // v4 (R2): the device page requires ?user_code= — prefer the complete
+      // URL; renderLoginArea's openExternal uses this stored value.
+      login.verificationUrl = res?.verificationUrlComplete ?? res?.verificationUrl ?? null;
       rerender();
     } catch (err) {
       console.error('onboardingStartLogin failed', err);

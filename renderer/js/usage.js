@@ -147,11 +147,65 @@
   }
 
   /**
+   * v4 (R2): one '한도' progress row — label + used/limit (%) + bar. The
+   * /usages API has no daily window, so the daily section shows the live
+   * weekly / 5-hour limits next to today's tokens.
+   */
+  function limitRow(label, used, limit, tooltip) {
+    const row = el('div', 'daily-limit-row');
+    if (tooltip) row.title = tooltip;
+    const head = el('div', 'daily-limit-head');
+    head.appendChild(el('span', 'daily-limit-label', label));
+    const r = ratio(used, limit);
+    head.appendChild(
+      el(
+        'span',
+        'daily-limit-value',
+        r == null ? '—' : `${fmtNum(used)} / ${fmtNum(limit)} (${Math.round(r * 100)}%)`
+      )
+    );
+    row.appendChild(head);
+    row.appendChild(progressBar(r)); // clamps width; null ratio -> empty bar
+    return row;
+  }
+
+  /** '한도' sub-block for the daily section, fed by render()'s getQuota(). */
+  function renderDailyLimits(quota) {
+    const box = el('div', 'daily-limits');
+    box.appendChild(el('h3', 'daily-limits-title', T('usage.daily.limits', '한도')));
+    if (!quota) {
+      box.appendChild(
+        el('p', 'daily-limits-unavailable', T('usage.daily.limit_unavailable', '한도 정보를 불러올 수 없습니다'))
+      );
+      return box;
+    }
+    box.appendChild(
+      limitRow(
+        T('usage.daily.weekly_limit', '주간 한도'),
+        quota.weeklyUsed,
+        quota.weeklyLimit,
+        T('usage.weekly_title', '매주 갱신되는 구독 할당량')
+      )
+    );
+    box.appendChild(
+      limitRow(
+        T('usage.daily.window_5h_limit', '5시간 한도'),
+        quota.window5hUsed,
+        quota.window5hLimit,
+        T('usage.window_5h_title', '5시간 단위 요청 속도 제한')
+      )
+    );
+    return box;
+  }
+
+  /**
    * '오늘 사용량' section, inserted ABOVE the quota cards (created lazily so
    * index.html stays untouched). Hidden entirely when the preload lacks
    * getDailyUsage (older backend) or the fetch fails.
+   * v4: takes render()'s shared getQuota() promise for the '한도' sub-block
+   * (one fetch feeds both here and the account cards — no refetch).
    */
-  async function renderDaily() {
+  async function renderDaily(quotaPromise) {
     const view = document.getElementById('usage-view');
     if (!view || typeof window.kimi?.getDailyUsage !== 'function') return;
     let box = document.getElementById('daily-usage');
@@ -193,6 +247,10 @@
       todayRow.appendChild(item);
     }
     box.appendChild(todayRow);
+
+    // v4 (R2): '한도' sub-block — below today numbers, above the chart.
+    const quota = quotaPromise ? await quotaPromise : null;
+    box.appendChild(renderDailyLimits(quota));
 
     const chart = el('div', 'daily-chart');
     const max = days.reduce(
@@ -313,17 +371,20 @@
     if (!quotaBox || !sessionBox) return;
     quotaBox.textContent = '';
     sessionBox.textContent = '';
-    void renderDaily(); // '오늘 사용량' section above the quota cards; no need to block on it
+    // v4 (R2): one getQuota() call feeds both the daily '한도' sub-block and
+    // the account quota cards — share the promise, never refetch.
+    const quotaPromise = Promise.resolve()
+      .then(() => window.kimi.getQuota())
+      .catch((err) => {
+        console.error('getQuota failed', err);
+        return null;
+      });
+    void renderDaily(quotaPromise); // '오늘 사용량' section above the quota cards; no need to block on it
     quotaBox.appendChild(el('h2', 'usage-section-title', T('usage.account_quota', '계정 할당량')));
     sessionBox.appendChild(el('h2', 'usage-section-title', T('usage.current_session', '현재 세션')));
     renderSessionUsage(sessionBox, state);
 
-    let quota = null;
-    try {
-      quota = await window.kimi.getQuota();
-    } catch (err) {
-      console.error('getQuota failed', err);
-    }
+    const quota = await quotaPromise;
     renderQuotaCards(quotaBox, quota);
 
     const activeId = state?.activeId;

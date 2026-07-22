@@ -10,9 +10,13 @@
  * server-side model, else the server default (getState().defaultModel).
  * Pill stays hidden when listModels is not exposed by the preload.
  *
- * #swarm-toggle is shown ONLY when window.kimi.setSessionSwarm exists (the cli
- * engine exposes it; the direct engine omits it, per CONTRACT-V3). State is
- * per-session, optimistic UI with revert on failure.
+ * #swarm-toggle renders in BOTH engines (v4): fully wired when
+ * window.kimi.setSessionSwarm exists (the cli engine exposes it); rendered
+ * but disabled (.disabled + aria-disabled, click no-op, explanatory title)
+ * when the direct engine omits it. Fresh cli sessions seed their on/off state
+ * from localStorage 'kimi.defaultSwarm' (settings '스웜 기본값') when no
+ * per-session value exists. State is per-session, optimistic UI with revert
+ * on failure.
  *
  * #effort-select (v3) is shown ONLY when window.kimi.setSessionEffort exists.
  * Per-session thinking level off/low/high/max (끄기/낮음/높음/최대, default
@@ -32,6 +36,7 @@
   const LS_MODEL = 'kimi.sessionModel.'; // + sessionId -> model alias
   const LS_SWARM = 'kimi.sessionSwarm.'; // + sessionId -> '1' | '0'
   const LS_EFFORT = 'kimi.sessionEffort.'; // + sessionId -> 'off'|'low'|'high'|'max'
+  const LS_DEFAULT_SWARM = 'kimi.defaultSwarm'; // v4: settings '스웜 기본값' -> '1' | '0'
 
   const EFFORT_LEVELS = ['off', 'low', 'high', 'max'];
   const DEFAULT_EFFORT = 'high';
@@ -202,12 +207,24 @@
   /* ---- swarm toggle ---- */
 
   function swarmEnabled(sid) {
-    return sid ? lsGet(LS_SWARM + sid) === '1' : false;
+    if (!sid) return false; // draft chat: app.js applies the default on create
+    const stored = lsGet(LS_SWARM + sid);
+    if (stored === '1' || stored === '0') return stored === '1';
+    // v4: fresh session with no per-session value — seed from the settings
+    // default (스웜 기본값) so the pill matches what app.js applied.
+    return lsGet(LS_DEFAULT_SWARM) === '1';
   }
 
   function updateSwarm(sid) {
     if (!swarmBtn || swarmBtn.hidden) return;
     if (!swarmBtn.textContent.trim()) swarmBtn.textContent = T('options.swarm.label', '스웜');
+    // v4: engine without swarm (direct) — inert pill, explanatory title.
+    if (typeof window.kimi?.setSessionSwarm !== 'function') {
+      swarmBtn.classList.remove('on');
+      swarmBtn.setAttribute('aria-pressed', 'false');
+      swarmBtn.title = T('options.swarm.unavailable', '스웜은 CLI 에이전트 모드에서 사용할 수 있습니다');
+      return;
+    }
     const on = swarmEnabled(sid);
     swarmBtn.classList.toggle('on', on);
     swarmBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
@@ -290,10 +307,17 @@
       }
     }
     if (swarmBtn) {
+      // v4: the pill renders in both engines — inert when the preload omits
+      // setSessionSwarm (direct engine), fully wired when available (cli).
+      swarmBtn.hidden = false;
       if (typeof window.kimi?.setSessionSwarm !== 'function') {
-        swarmBtn.hidden = true; // engine without swarm (e.g. direct): stays hidden
+        swarmBtn.classList.add('disabled');
+        swarmBtn.setAttribute('aria-disabled', 'true');
+        swarmBtn.setAttribute('aria-pressed', 'false');
+        // No click listener: the disabled pill is a deliberate no-op.
       } else {
-        swarmBtn.hidden = false;
+        swarmBtn.classList.remove('disabled');
+        swarmBtn.removeAttribute('aria-disabled');
         if (!swarmBtn.dataset.chatOptionsWired) {
           swarmBtn.dataset.chatOptionsWired = '1';
           swarmBtn.addEventListener('click', () => void toggleSwarm());

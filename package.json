@@ -1,6 +1,6 @@
 {
-  "name": "kimi-desktop",
-  "version": "0.1.0",
+  "name": "kimi-gui",
+  "version": "0.4.0",
   "private": true,
   "description": "Desktop GUI wrapper around the Kimi Code CLI (kimi web)",
   "main": "main/main.js",

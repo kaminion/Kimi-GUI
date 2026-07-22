@@ -1432,3 +1432,52 @@
 .daily-swatch-out {
   background: var(--accent);
 }
+
+/* ==========================================================================
+   usage v4 — daily '한도' sub-block (R2; additive append, owned classes
+   .daily-limits .daily-limits-title .daily-limit-row .daily-limit-head
+   .daily-limit-label .daily-limit-value .daily-limits-unavailable —
+   keep this section at END of file, below the usage v3 block)
+   ========================================================================== */
+
+.daily-limits {
+  margin: 0 0 var(--space-3);
+}
+
+.daily-limits-title {
+  margin: 0 0 var(--space-1);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.daily-limit-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 3px 0;
+}
+
+.daily-limit-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.daily-limit-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.daily-limit-value {
+  font-size: 12px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.daily-limits-unavailable {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-dim);
+}

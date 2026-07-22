@@ -306,7 +306,14 @@
       loginActive = true;
       try {
         const res = await window.kimi.onboardingStartLogin();
-        showLoginWaiting(res?.userCode || '', res?.verificationUrl || '');
+        // v4 (R2): the device page REQUIRES ?user_code= — it errors
+        // 'user_code 매개변수가 누락되었습니다' on the bare URL, so prefer the
+        // complete URL main/auth.js already returns. dataset.url (and thus
+        // the openExternal click) carries whatever is passed here.
+        showLoginWaiting(
+          res?.userCode || '',
+          res?.verificationUrlComplete ?? res?.verificationUrl ?? ''
+        );
       } catch (err) {
         showLoginError(err?.message);
       }

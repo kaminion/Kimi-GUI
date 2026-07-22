@@ -13,6 +13,14 @@
  *
  * The active engine persists in <userData>/settings.json ({engine}).
  *
+ * V4 (M1): in direct mode, legacy CLI sessions on disk
+ * (<KIMI_CODE_HOME|~/.kimi-code>/sessions) merge into listSessions via
+ * ./cli-sessions, and getMessages/sendPrompt/renameSession/deleteSession route
+ * by where the id resolves (direct store first, else the CLI tree). A CLI
+ * session continued in direct mode runs the normal direct runTurn against a
+ * direct-store shim rooted at that session's workspace dir, so appended turns
+ * stay wire-compatible and unknown state.json fields survive.
+ *
  * B1/B2 modules are parallel-swarm deliverables: every cross-module require is
  * lazy and guarded — a missing module degrades to a thrown
  * Error('engine unavailable...'), never a crash.
@@ -97,6 +105,12 @@ function iso(ms) {
   return Number.isFinite(n) && n > 0 ? new Date(n).toISOString() : null;
 }
 
+/** ms epoch of an ISO timestamp (0 when missing/unparseable) for sort merges. */
+function isoToMs(value) {
+  const n = Date.parse(typeof value === 'string' ? value : '');
+  return Number.isFinite(n) ? n : 0;
+}
+
 /** Push a payload to the renderer; never throws (window may be gone). */
 function emit(payload) {
   try {
@@ -165,6 +179,20 @@ function loadAuth() {
     directMods.auth = null;
   }
   return directMods.auth;
+}
+
+// V4 (M1): legacy CLI sessions on disk. Same lazy guarded pattern — a missing
+// module degrades to "no CLI sessions merged", never a crash.
+let cliSessionsMod = null;
+function loadCliSessions() {
+  if (cliSessionsMod) return cliSessionsMod;
+  try {
+    // eslint-disable-next-line global-require
+    cliSessionsMod = require('./cli-sessions');
+  } catch {
+    cliSessionsMod = null;
+  }
+  return cliSessionsMod;
 }
 
 function loadDirect() {
@@ -484,6 +512,33 @@ function normalizeCliSession(s) {
   };
 }
 
+/**
+ * V4 (M1, direct mode): resolve where a session id lives. The direct store
+ * wins; otherwise the id is looked up in the legacy CLI tree and a direct-store
+ * shim rooted at that session's workspace dir is returned (same get/getMessages/
+ * appendTurn/setConfig/usageByDay surface, unknown state.json fields preserved).
+ * Returns { store, origin: 'direct'|'cli' } or null when the id resolves nowhere.
+ */
+async function resolveDirectSessionStore(sessionId) {
+  const d = requireDirect();
+  try {
+    const s = await Promise.resolve(d.store.get(sessionId));
+    if (s && typeof s === 'object') return { store: d.store, origin: 'direct' };
+  } catch {
+    /* fall through to the CLI lookup */
+  }
+  const cliSessions = loadCliSessions();
+  if (cliSessions && typeof cliSessions.storeFor === 'function') {
+    try {
+      const shim = await Promise.resolve(cliSessions.storeFor(sessionId));
+      if (shim) return { store: shim, origin: 'cli' };
+    } catch {
+      /* unresolved */
+    }
+  }
+  return null;
+}
+
 async function listSessions() {
   if (currentEngine === 'cli') {
     const items = await requireCli().listSessions();
@@ -493,7 +548,7 @@ async function listSessions() {
   }
   const d = requireDirect();
   const items = await Promise.resolve(d.store.list());
-  return (Array.isArray(items) ? items : [])
+  const directItems = (Array.isArray(items) ? items : [])
     .filter((s) => s && typeof s.id === 'string')
     .map((s) => ({
       id: s.id,
@@ -506,6 +561,35 @@ async function listSessions() {
       effort: s.effort ?? null,
       engine: 'direct',
     }));
+  // V4 (M1): legacy CLI sessions merge into the same list — dedupe by id
+  // (direct wins), combined list sorted newest-first by updatedAt. A missing
+  // ~/.kimi-code or cli-sessions module just yields no extra items.
+  let cliItems = [];
+  const cliSessions = loadCliSessions();
+  if (cliSessions && typeof cliSessions.list === 'function') {
+    try {
+      const legacy = await Promise.resolve(cliSessions.list());
+      cliItems = (Array.isArray(legacy) ? legacy : [])
+        .filter((s) => s && typeof s.id === 'string')
+        .map((s) => ({
+          id: s.id,
+          title: typeof s.title === 'string' ? s.title : '',
+          cwd: s.cwd ?? '',
+          updatedAt: s.updatedAt ?? null,
+          busy: activeTurns.has(s.id),
+          usage: null,
+          model: s.model ?? null,
+          effort: s.effort ?? null,
+          engine: 'cli',
+        }));
+    } catch (err) {
+      console.warn(`[backend] cli session listing failed: ${err.message}`);
+    }
+  }
+  const directIds = new Set(directItems.map((s) => s.id));
+  const merged = directItems.concat(cliItems.filter((s) => !directIds.has(s.id)));
+  merged.sort((a, b) => isoToMs(b.updatedAt) - isoToMs(a.updatedAt));
+  return merged;
 }
 
 async function createSession({ cwd } = {}) {
@@ -529,7 +613,11 @@ async function getMessages(sessionId) {
     return client.getMessages(sessionId);
   }
   const d = requireDirect();
-  return Promise.resolve(d.store.getMessages(sessionId));
+  // V4: route by where the id resolves (direct store first, else CLI tree).
+  // Unresolved ids fall back to the direct store, which returns [] for missing.
+  const resolved = await resolveDirectSessionStore(sessionId);
+  const store = resolved ? resolved.store : d.store;
+  return Promise.resolve(store.getMessages(sessionId));
 }
 
 function contextLimitFor(model) {
@@ -552,12 +640,16 @@ function sumUsageRows(rows) {
 async function getProfile(sessionId) {
   if (currentEngine === 'cli') return requireCli().getProfile(sessionId);
   const d = requireDirect();
-  const s = await Promise.resolve(d.store.get(sessionId));
+  // V4: route by id resolution so a CLI-origin session opened in direct mode
+  // still yields a profile (shim store reads the same state.json + wire.jsonl).
+  const resolved = await resolveDirectSessionStore(sessionId);
+  const store = resolved ? resolved.store : d.store;
+  const s = await Promise.resolve(store.get(sessionId));
   if (!s || typeof s !== 'object') throw new Error(`session not found: ${sessionId}`);
   const model = s.model || DEFAULT_DIRECT_MODEL;
   let totals = { input: 0, output: 0, turns: 0 };
   try {
-    totals = sumUsageRows(await Promise.resolve(d.store.usageByDay(sessionId)));
+    totals = sumUsageRows(await Promise.resolve(store.usageByDay(sessionId)));
   } catch {
     /* usage is best-effort */
   }
@@ -640,8 +732,21 @@ async function directSendPrompt(sessionId, text) {
     emitSession(sessionId, { type: 'error', message: BUSY_ERROR });
     throw new Error(BUSY_ERROR);
   }
-  const session = await Promise.resolve(d.store.get(sessionId));
-  if (!session || typeof session !== 'object') throw new Error(`session not found: ${sessionId}`);
+  // V4: a CLI-origin session continues in direct mode via the shim store over
+  // its workspace dir (runTurn appends through store.appendTurn, which keeps
+  // the wire format and every unknown state.json field intact).
+  let store = d.store;
+  let session = await Promise.resolve(store.get(sessionId));
+  if (!session || typeof session !== 'object') {
+    const resolved = await resolveDirectSessionStore(sessionId);
+    if (resolved) {
+      store = resolved.store;
+      session = await Promise.resolve(store.get(sessionId));
+    }
+  }
+  if (!session || typeof session !== 'object') {
+    throw new Error(`session not found: ${sessionId}`);
+  }
 
   const controller = new AbortController();
   const turnId = `turn_${randomUUID()}`;
@@ -695,7 +800,7 @@ async function directSendPrompt(sessionId, text) {
     let reason = 'completed';
     try {
       await d.client.runTurn({
-        store: d.store,
+        store,
         sessionId,
         cwd: session.cwd,
         model: session.model || DEFAULT_DIRECT_MODEL,
@@ -849,7 +954,11 @@ async function setSessionModel(sessionId, model) {
   if (!DIRECT_MODELS.some((m) => m.model === alias)) {
     throw new Error(`unknown direct model: ${alias}`);
   }
-  await patchDirectSession(d.store, sessionId, { model: alias });
+  // V4: route by id resolution — a CLI-origin session's state.json gets the
+  // same {model} flag through the shim store's setConfig (unknown fields kept).
+  const resolved = await resolveDirectSessionStore(sessionId);
+  if (!resolved) throw new Error(`session not found: ${sessionId}`);
+  await patchDirectSession(resolved.store, sessionId, { model: alias });
   return { ok: true };
 }
 
@@ -868,7 +977,10 @@ async function setSessionEffort(sessionId, effort) {
     return requireCli().setSessionThinking(sessionId, value);
   }
   const d = requireDirect();
-  await patchDirectSession(d.store, sessionId, { effort: value });
+  // V4: route by id resolution (same shim-store path as setSessionModel).
+  const resolved = await resolveDirectSessionStore(sessionId);
+  if (!resolved) throw new Error(`session not found: ${sessionId}`);
+  await patchDirectSession(resolved.store, sessionId, { effort: value });
   return { ok: true };
 }
 
@@ -881,6 +993,13 @@ async function renameSession(sessionId, title) {
     return requireCli().renameSession(sessionId, clean);
   }
   const d = requireDirect();
+  // V4: route by id resolution — CLI-origin sessions are renamed in place via
+  // cli-sessions (read-modify-write, isCustomTitle=true, unknown fields kept).
+  const resolved = await resolveDirectSessionStore(sessionId);
+  if (resolved && resolved.origin === 'cli') {
+    const cliSessions = loadCliSessions();
+    return Promise.resolve(cliSessions.rename(sessionId, clean));
+  }
   return Promise.resolve(d.store.rename(sessionId, clean));
 }
 
@@ -894,6 +1013,13 @@ async function deleteSession(sessionId) {
   }
   const d = requireDirect();
   await abort(sessionId); // no-op when idle
+  // V4: deleting a CLI-origin session = archive on disk (never rm the CLI's
+  // transcript); direct-native sessions are removed as before.
+  const resolved = await resolveDirectSessionStore(sessionId);
+  if (resolved && resolved.origin === 'cli') {
+    const cliSessions = loadCliSessions();
+    return Promise.resolve(cliSessions.archive(sessionId));
+  }
   return Promise.resolve(d.store.remove(sessionId));
 }
 

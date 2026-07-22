@@ -1,14 +1,20 @@
-/* sidebar.js — session list rendering (v3).
+/* sidebar.js — session list rendering (v4).
  *
- * v1/v2 (kept): auto project groups by cwd basename, collapsible chevron
- * groups (state in localStorage 'kimi.sidebarCollapsed'), busy dots, relative
- * time, active highlight, flat fallback when no cwd exists anywhere.
+ * v4 (CONTRACT-V4 R1): the auto project grouping (cwd-basename groups +
+ * 'kimi.sidebarCollapsed' persistence) is REMOVED. The sidebar is now:
+ *   1. custom groups (unchanged from v3, see below), then
+ *   2. ONE flat '최근 내역' section (.session-group.recent-group) listing
+ *      every unassigned session — both engines — sorted by updatedAt desc.
+ *      Its header reuses the group-label styling but is a static label
+ *      (no collapse). Item meta = relative time + cwd basename (basename
+ *      omitted when cwd is missing). The section is skipped entirely when
+ *      there is nothing unassigned to show.
  *
- * v3 (CONTRACT-V3 R1):
- * - Custom groups pinned ABOVE the project groups: '그룹' header row + '+'
+ * v3 (CONTRACT-V3 R1, kept):
+ * - Custom groups pinned ABOVE the recent section: '그룹' header row + '+'
  *   add button (inline-editable '새 그룹' row), collapsible, rename by
  *   double-click, delete by hover '×' (confirm modal; sessions return to
- *   their project groups). Persistence: localStorage 'kimi.customGroups' =
+ *   the recent section). Persistence: localStorage 'kimi.customGroups' =
  *   { groups:[{id,name,collapsed}], assign:{sessionId:groupId} }.
  * - HTML5 drag & drop: .session-item[draggable]; custom group headers AND
  *   containers are drop targets (.drop-target highlight); a '그룹 해제'
@@ -28,9 +34,7 @@
 
 (function () {
   const DAY_MS = 24 * 60 * 60 * 1000;
-  const COLLAPSE_KEY = 'kimi.sidebarCollapsed'; // persisted array of project-group keys
-  const CUSTOM_GROUPS_KEY = 'kimi.customGroups'; // v3: { groups:[{id,name,collapsed}], assign:{sid:gid} }
-  const OTHER_GROUP_KEY = '__other__'; // stable key for sessions without a cwd
+  const CUSTOM_GROUPS_KEY = 'kimi.customGroups'; // { groups:[{id,name,collapsed}], assign:{sid:gid} }
   const T = (k, f) => (window.I18N?.t ? window.I18N.t(k, f) : f);
 
   /** Short relative time for an ISO timestamp (locale-aware via I18N). */
@@ -56,7 +60,6 @@
   }
 
   const byUpdatedDesc = (a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0);
-  const ts = (s) => Date.parse(s.updatedAt || '') || 0;
 
   function el(tag, className, text) {
     const node = document.createElement(tag);
@@ -67,33 +70,6 @@
 
   function rerender() {
     if (window.App?.state) render(window.App.state);
-  }
-
-  /* ---- project-group collapse persistence (v1/v2, unchanged) ---- */
-
-  function readCollapsed() {
-    try {
-      const arr = JSON.parse(localStorage.getItem(COLLAPSE_KEY) || '[]');
-      return new Set(Array.isArray(arr) ? arr.map(String) : []);
-    } catch (_) {
-      return new Set();
-    }
-  }
-
-  function writeCollapsed(set) {
-    try {
-      localStorage.setItem(COLLAPSE_KEY, JSON.stringify([...set]));
-    } catch (_) {
-      /* ignore */
-    }
-  }
-
-  function toggleCollapsed(key) {
-    const set = readCollapsed();
-    if (set.has(key)) set.delete(key);
-    else set.add(key);
-    writeCollapsed(set);
-    rerender();
   }
 
   /* ---- custom groups store (v3) ---- */
@@ -523,7 +499,7 @@
         '"' +
         group.name +
         '"' +
-        T('sidebar.group_delete_body', ' 그룹을 삭제할까요? 대화는 프로젝트 그룹으로 돌아갑니다.'),
+        T('sidebar.group_delete_body', ' 그룹을 삭제할까요? 대화는 최근 내역으로 돌아갑니다.'),
       confirmLabel: T('common.delete', '삭제'),
       danger: true,
     }).then((ok) => {
@@ -584,7 +560,9 @@
 
     const meta = document.createElement('div');
     meta.className = 'session-meta';
-    meta.textContent = relTime(session.updatedAt);
+    // Relative time + cwd basename; missing/unknown cwd -> time only.
+    const base = basename(session.cwd);
+    meta.textContent = relTime(session.updatedAt) + (base ? ' · ' + base : '');
 
     // v3: hover actions — rename (pencil) + delete (trash).
     const actions = el('span', 'session-actions');
@@ -629,39 +607,23 @@
   /* ---- group headers ---- */
 
   /**
-   * Project group header: chevron + project name + session count.
-   * Click / Enter / Space toggles the group; state persists across launches.
-   * Class names match layout.css (.session-group-label, rotation-based
-   * chevron: right-pointing base glyph, CSS rotates it 90° when expanded).
+   * '최근 내역' section header (v4): reuses the group-label styling
+   * (.session-group-label / .session-group-name / .session-group-count) but
+   * is a static label — no chevron, no collapse, no keyboard interaction.
    */
-  function renderGroupHeader(group, isCollapsed) {
+  function renderRecentLabel(itemCount) {
     const header = document.createElement('div');
-    header.className = 'session-group-label';
-    header.setAttribute('role', 'button');
-    header.tabIndex = 0;
-    header.setAttribute('aria-expanded', String(!isCollapsed));
-    header.title = T('sidebar.group_toggle', '접기/펼치기');
-
-    const chevron = document.createElement('span');
-    chevron.className = 'session-group-chevron';
-    chevron.innerHTML = chevronSvg(isCollapsed);
+    header.className = 'session-group-label recent-group-label';
 
     const name = document.createElement('span');
     name.className = 'session-group-name';
-    name.textContent = group.name;
+    name.textContent = T('sidebar.recent', '최근 내역');
 
     const count = document.createElement('span');
     count.className = 'session-group-count';
-    count.textContent = String(group.items.length);
+    count.textContent = String(itemCount);
 
-    header.append(chevron, name, count);
-    header.addEventListener('click', () => toggleCollapsed(group.key));
-    header.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        toggleCollapsed(group.key);
-      }
-    });
+    header.append(name, count);
     return header;
   }
 
@@ -721,7 +683,7 @@
     return header;
   }
 
-  /* ---- custom groups section (v3, pinned above project groups) ---- */
+  /* ---- custom groups section (v3, pinned above the recent section) ---- */
 
   function renderCustomSection(state, data, sessionsById) {
     const section = el('div');
@@ -769,9 +731,9 @@
 
   /**
    * Render the session list: custom groups first (assigned sessions leave
-   * their project group), then auto project groups by cwd basename.
-   * Groups sort by latest activity desc, items by updatedAt desc.
-   * When no session carries a cwd at all, fall back to a flat list.
+   * the recent section), then ONE '최근 내역' section with every unassigned
+   * session — both engines — sorted by updatedAt desc. The recent section
+   * is skipped when nothing is unassigned.
    */
   function render(state) {
     const nav = document.getElementById('session-list');
@@ -790,51 +752,19 @@
     const data = readCustomGroups();
     pruneAssign(data, sessionsById);
 
-    // v3: custom groups section is always present (the '+' row is the only
-    // way to create a group) and pinned above the project groups.
+    // Custom groups section is always present (the '+' row is the only way
+    // to create a group) and pinned above the recent section.
     nav.appendChild(renderCustomSection(state, data, sessionsById));
 
     const assigned = new Set(Object.keys(data.assign));
     const rest = sessions.filter((s) => !assigned.has(String(s.id)));
+    if (!rest.length) return;
 
-    if (!rest.some((s) => basename(s.cwd))) {
-      // Flat fallback: no project information anywhere -> plain newest-first list.
-      rest.sort(byUpdatedDesc);
-      for (const s of rest) nav.appendChild(renderItem(s, state));
-      return;
-    }
-
-    const groups = new Map(); // key -> { key, name, items, latest }
-    for (const s of rest) {
-      const base = basename(s.cwd);
-      const key = base || OTHER_GROUP_KEY;
-      if (!groups.has(key)) {
-        groups.set(key, {
-          key,
-          name: base || T('sidebar.group_other', '기타'),
-          items: [],
-          latest: 0,
-        });
-      }
-      const g = groups.get(key);
-      g.items.push(s);
-      g.latest = Math.max(g.latest, ts(s));
-    }
-
-    const collapsed = readCollapsed();
-    const sorted = [...groups.values()].sort((a, b) => b.latest - a.latest);
-    for (const g of sorted) {
-      g.items.sort(byUpdatedDesc);
-      const groupEl = document.createElement('div');
-      groupEl.className = 'session-group';
-      const isCollapsed = collapsed.has(g.key);
-      if (isCollapsed) groupEl.classList.add('collapsed');
-      groupEl.appendChild(renderGroupHeader(g, isCollapsed));
-      if (!isCollapsed) {
-        for (const s of g.items) groupEl.appendChild(renderItem(s, state));
-      }
-      nav.appendChild(groupEl);
-    }
+    rest.sort(byUpdatedDesc);
+    const groupEl = el('div', 'session-group recent-group');
+    groupEl.appendChild(renderRecentLabel(rest.length));
+    for (const s of rest) groupEl.appendChild(renderItem(s, state));
+    nav.appendChild(groupEl);
   }
 
   // Language change: re-render the list (group headers + relative times).

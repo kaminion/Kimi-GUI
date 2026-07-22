@@ -483,3 +483,23 @@
   font-size: 12px;
   color: var(--text-secondary);
 }
+
+/* ==========================================================================
+   swarm disabled v4 (R2) — #swarm-toggle renders in the direct engine too,
+   but inert: dimmed, not-allowed cursor, no hover/active affordance.
+   Additive end-block — keep at END of file.
+   ========================================================================== */
+
+#composer-options .pill.disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+#composer-options .pill.disabled:hover {
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+#composer-options .pill.disabled:active {
+  background: transparent;
+}

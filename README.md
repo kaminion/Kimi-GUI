@@ -1,6 +1,6 @@
-# Kimi Desktop
+# kimi-gui
 
-Kimi의 데스크톱 GUI입니다. 앱이 자체 OAuth 로그인(auth.kimi.com, device flow)과 Anthropic 호환 API(api.kimi.com/coding) 직접 통신으로 동작하므로 **Kimi Code CLI 없이** 바로 사용할 수 있습니다. Swarm 등 고급 에이전트 기능이 필요하면 설정에서 [Kimi Code CLI](https://www.kimi.com) 기반의 'CLI 에이전트 모드'로 전환할 수 있습니다. Apple Human Interface Guidelines 기반의 차콜 프리미엄 테마(다크 기본, 라이트 옵션)를 적용했고, macOS와 Windows를 지원합니다. Electron + 순수 JavaScript(ES2022)로 작성했으며 번들러를 사용하지 않습니다. UI 기본 언어는 한국어이고 English를 지원합니다.
+kimi-gui는 Kimi의 데스크톱 GUI입니다. 앱이 자체 OAuth 로그인(auth.kimi.com, device flow)과 Anthropic 호환 API(api.kimi.com/coding) 직접 통신으로 동작하므로 **Kimi Code CLI 없이** 바로 사용할 수 있습니다. Swarm 등 고급 에이전트 기능이 필요하면 설정에서 [Kimi Code CLI](https://www.kimi.com) 기반의 'CLI 에이전트 모드'로 전환할 수 있습니다. Apple Human Interface Guidelines 기반의 차콜 프리미엄 테마(다크 기본, 라이트 옵션)를 적용했고, macOS와 Windows를 지원합니다. Electron + 순수 JavaScript(ES2022)로 작성했으며 번들러를 사용하지 않습니다. UI 기본 언어는 한국어이고 English를 지원합니다.
 
 ## 주요 기능
 

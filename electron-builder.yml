@@ -1,8 +1,8 @@
-# electron-builder configuration for Kimi Desktop
+# electron-builder configuration for kimi-gui
 # Docs: https://www.electron.build/configuration
 
-appId: com.kimi.desktop
-productName: "Kimi Desktop"
+appId: com.kimi.gui
+productName: "kimi-gui"
 
 directories:
   output: dist
