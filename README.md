@@ -10,17 +10,9 @@
 > [!NOTE]
 > **kimi-gui is a community project, not an official MoonshotAI product.** It uses the same local APIs and credentials as the Kimi Code CLI.
 
-kimi-gui is an open-source desktop GUI that lets you use [Kimi Code](https://www.kimi.com) without the terminal. It runs on macOS and Windows, is built with Electron and plain JavaScript (ES2022, no bundler), follows Apple Human Interface Guidelines with a charcoal dark theme (light optional), and defaults to a Korean UI with full English support.
+kimi-gui is an open-source desktop GUI that lets you use [Kimi Code](https://www.kimi.com) without the terminal. It runs on macOS and Windows, is built with Electron and plain JavaScript (ES2022, no bundler), follows Apple Human Interface Guidelines with a charcoal dark theme (light optional), and defaults to an English UI with full Korean support.
 
-## Screenshots
-
-| Chat view | Sidebar & groups |
-| --- | --- |
-| ![Chat view with tool call and agent panel](docs/media/chat-view.png) | ![Custom groups in the sidebar](docs/media/sidebar-groups.png) |
-
-| Usage | Settings |
-| --- | --- |
-| ![Usage view with token chart and quota bars](docs/media/usage.png) | ![Settings — model and engine](docs/media/settings.png) |
+![kimi-gui demo — new chat, streaming reply, agent panel, and usage view](docs/media/demo.gif)
 
 ## English
 
@@ -84,7 +76,7 @@ Today's token usage with a 7-day daily chart, weekly and 5-hour rolling quota ba
 
 #### And more
 
-- Korean/English UI (한국어 기본)
+- English/Korean UI (English by default)
 - Charcoal dark theme, light optional
 - Automatic update checks via GitHub Releases
 
@@ -130,7 +122,7 @@ node --check main/backend.js   # syntax-check a file (per file; plain JS, no bui
 > [!NOTE]
 > **kimi-gui는 커뮤니티 프로젝트이며, MoonshotAI의 공식 제품이 아닙니다.** Kimi Code CLI와 동일한 로컬 API와 자격증명을 사용합니다.
 
-kimi-gui는 [Kimi Code](https://www.kimi.com)를 터미널 없이 사용할 수 있게 해주는 오픈소스 데스크톱 GUI입니다. macOS와 Windows에서 동작하며, Electron과 순수 JavaScript(ES2022, 번들러 없음)로 작성했습니다. Apple Human Interface Guidelines 기반의 차콜 다크 테마(라이트 옵션)를 적용했고, 한국어 UI가 기본이며 English를 완전히 지원합니다.
+kimi-gui는 [Kimi Code](https://www.kimi.com)를 터미널 없이 사용할 수 있게 해주는 오픈소스 데스크톱 GUI입니다. macOS와 Windows에서 동작하며, Electron과 순수 JavaScript(ES2022, 번들러 없음)로 작성했습니다. Apple Human Interface Guidelines 기반의 차콜 다크 테마(라이트 옵션)를 적용했고, English UI가 기본이며 한국어를 완전히 지원합니다.
 
 ### 시작하기
 
@@ -192,7 +184,7 @@ CLI 시절의 세션이 내장 엔진 세션과 나란히 하나의 사이드바
 
 #### 그 외
 
-- 한국어/English UI (기본 한국어)
+- English/한국어 UI (English 기본)
 - 차콜 다크 테마, 라이트 옵션
 - GitHub Releases 기반 자동 업데이트 확인
 

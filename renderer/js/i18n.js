@@ -11,7 +11,7 @@
  * attributes; I18N.applyToDom(root) translates those in place. It runs once
  * on DOMContentLoaded and again on every language change.
  *
- * Language persists in localStorage 'kimi.lang' (default 'ko'). setLang
+ * Language persists in localStorage 'kimi.lang' (default 'en'). setLang
  * re-stamps <html lang>, re-applies data-i18n attributes, then notifies
  * listeners registered via I18N.onChange (window event 'kimi:lang').
  */
@@ -506,7 +506,7 @@
       const v = localStorage.getItem(LS_KEY);
       if (v && TABLE[v]) return v;
     } catch (_) { /* private mode */ }
-    return 'ko';
+    return 'en';
   }
 
   // Module re-render hooks, fanned out from the single 'kimi:lang' listener

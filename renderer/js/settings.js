@@ -124,7 +124,7 @@
   function renderGeneral(content) {
     content.appendChild(el('h2', 'settings-section-title', T('settings.section.general', '일반')));
 
-    const lang = lsGet(LS_LANG) || window.I18N?.lang || 'ko';
+    const lang = lsGet(LS_LANG) || window.I18N?.lang || 'en';
     const langSeg = buildSegment(
       [
         { value: 'ko', label: T('settings.general.lang.ko', '한국어') },
