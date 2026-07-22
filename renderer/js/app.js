@@ -12,6 +12,7 @@
   let unsubscribeEvents = null;   // guard against double-subscribe on re-entry
   let chatOptionsInited = false;  // ChatOptions.init() runs exactly once
   let updateReady = false;        // a downloaded update is waiting to install
+  let updateVersion = null;       // version of the downloaded update (for the title)
 
   const App = {
     state: {
@@ -147,6 +148,16 @@
 
   window.App = App;
 
+  // Re-render language-dependent chrome on language change (sidebar, header,
+  // status dot, update dot). Static markup is handled by I18N.applyToDom.
+  window.I18N?.onChange?.(() => {
+    if (!App.state.ready) return; // nothing rendered yet; boot paints fresh strings
+    window.Sidebar?.render?.(App.state);
+    updateChatHeader();
+    setServerStatus(App.state.serverReady);
+    setUpdateDot(updateReady, updateVersion);
+  });
+
   /** Invoke an optional hook on a sibling module without ever breaking boot. */
   function safeCall(fn) {
     try {
@@ -229,7 +240,7 @@
 
   function updateChatHeader() {
     const session = App.state.sessions.find((s) => s.id === App.state.activeId);
-    $('#chat-title').textContent = session?.title || '새 대화';
+    $('#chat-title').textContent = session?.title || T('chat.new_chat', '새 대화');
     $('#model-label').textContent = App.state.defaultModel || '';
     updateAbortButton();
   }
@@ -252,7 +263,10 @@
     }
     const pct = Math.round((used / limit) * 100);
     el.textContent = `${pct}%`;
-    el.title = `컨텍스트 ${intFmt.format(used)} / ${intFmt.format(limit)} 토큰`;
+    el.title =
+      T('chat.context_title_pre', '컨텍스트 ') +
+      `${intFmt.format(used)} / ${intFmt.format(limit)}` +
+      T('common.tokens', ' 토큰');
     el.style.color = pct >= 80 ? 'var(--warn)' : '';
   }
 
@@ -262,8 +276,8 @@
     dot.classList.toggle('ok', !!ready);
     dot.classList.toggle('err', !ready);
     dot.title = ready
-      ? '서버 연결됨'
-      : `서버 연결 끊김${error ? `: ${error}` : ''}`;
+      ? T('app.server_connected', '서버 연결됨')
+      : T('app.server_disconnected', '서버 연결 끊김') + (error ? `: ${error}` : '');
   }
 
   function scheduleRefreshSessions() {
@@ -275,6 +289,7 @@
 
   function setUpdateDot(show, version) {
     updateReady = !!show;
+    if (version) updateVersion = version;
     const dot = $('#settings-update-dot');
     if (dot) dot.hidden = !updateReady;
     const btn = $('#settings-btn');
@@ -402,7 +417,8 @@
   /* ---- boot ---- */
 
   function showBootError(message) {
-    $('#boot-error-message').textContent = message || '알 수 없는 오류가 발생했습니다.';
+    $('#boot-error-message').textContent =
+      message || T('app.unknown_error', '알 수 없는 오류가 발생했습니다.');
     $('#boot-error').style.display = 'flex';
   }
 
@@ -444,7 +460,9 @@
   async function bootMain() {
     let state;
     try {
-      if (!window.kimi) throw new Error('preload API(window.kimi)를 사용할 수 없습니다.');
+      if (!window.kimi) {
+        throw new Error(T('app.error.no_preload', 'preload API(window.kimi)를 사용할 수 없습니다.'));
+      }
       state = await window.kimi.getState();
     } catch (err) {
       showBootError(err?.message || String(err));
@@ -458,14 +476,16 @@
         safeCall(() => window.Onboarding.init(bootMain));
       } else {
         showBootError(
-          state?.error || 'Kimi Code CLI를 찾을 수 없거나 로그인이 필요합니다.'
+          state?.error ||
+            T('app.error.cli_or_login', 'Kimi Code CLI를 찾을 수 없거나 로그인이 필요합니다.')
         );
       }
       return;
     }
     if (!state?.ready) {
       showBootError(
-        state?.error || 'Kimi Code CLI를 찾을 수 없거나 로컬 서버를 시작하지 못했습니다.'
+        state?.error ||
+          T('app.error.cli_or_server', 'Kimi Code CLI를 찾을 수 없거나 로컬 서버를 시작하지 못했습니다.')
       );
       return;
     }

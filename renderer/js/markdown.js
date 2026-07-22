@@ -3,12 +3,14 @@
  *
  * Pipeline: marked.parse -> DOM sanitize (allowlist tags/attrs; raw HTML is
  * re-escaped to visible text, never interpreted) -> enhance (hljs highlighting,
- * code header bar with 복사 button, external-link wiring).
+ * code header bar with copy button, external-link wiring).
  * Depends on window.marked / window.hljs loaded before this file (both optional:
  * the renderer degrades to escaped plain text when they are missing).
  */
 (function () {
   'use strict';
+
+  const T = (k, f) => (window.I18N?.t ? window.I18N.t(k, f) : f);
 
   // Tags GitHub-style markdown may legitimately produce. Everything else is escaped.
   const ALLOWED_TAGS = new Set([
@@ -103,7 +105,7 @@
     }
   }
 
-  // Add hljs highlighting + header bar (language label + 복사 button) to each block.
+  // Add hljs highlighting + header bar (language label + copy button) to each block.
   function enhanceCodeBlocks(root) {
     for (const pre of Array.from(root.querySelectorAll('pre'))) {
       const code = pre.querySelector('code');
@@ -129,7 +131,7 @@
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'code-copy-btn';
-      btn.textContent = '복사';
+      btn.textContent = T('markdown.copy', '복사');
       header.append(label, btn);
       pre.parentNode.replaceChild(wrap, pre);
       wrap.append(header, pre);
@@ -173,7 +175,7 @@
       if (navigator.clipboard && text) {
         navigator.clipboard.writeText(text).then(() => {
           const prev = copyBtn.textContent;
-          copyBtn.textContent = '복사됨';
+          copyBtn.textContent = T('markdown.copied', '복사됨');
           copyBtn.disabled = true;
           setTimeout(() => { copyBtn.textContent = prev; copyBtn.disabled = false; }, 1200);
         }).catch(() => { /* clipboard unavailable: no-op */ });

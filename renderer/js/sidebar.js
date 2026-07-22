@@ -7,18 +7,18 @@
   const OTHER_GROUP_KEY = '__other__'; // stable key for sessions without a cwd
   const T = (k, f) => (window.I18N?.t ? window.I18N.t(k, f) : f);
 
-  /** Short Korean relative time for an ISO timestamp. */
+  /** Short relative time for an ISO timestamp (locale-aware via I18N). */
   function relTime(iso) {
     const t = Date.parse(iso || '');
     if (Number.isNaN(t)) return '';
     const diff = Date.now() - t;
-    if (diff < 0) return '방금 전';
-    if (diff < 60 * 1000) return '방금 전';
-    if (diff < 60 * 60 * 1000) return `${Math.floor(diff / (60 * 1000))}분 전`;
-    if (diff < DAY_MS) return `${Math.floor(diff / (60 * 60 * 1000))}시간 전`;
-    if (diff < 7 * DAY_MS) return `${Math.floor(diff / DAY_MS)}일 전`;
+    if (diff < 0) return T('sidebar.time.just_now', '방금 전');
+    if (diff < 60 * 1000) return T('sidebar.time.just_now', '방금 전');
+    if (diff < 60 * 60 * 1000) return Math.floor(diff / (60 * 1000)) + T('sidebar.time.minutes_ago', '분 전');
+    if (diff < DAY_MS) return Math.floor(diff / (60 * 60 * 1000)) + T('sidebar.time.hours_ago', '시간 전');
+    if (diff < 7 * DAY_MS) return Math.floor(diff / DAY_MS) + T('sidebar.time.days_ago', '일 전');
     const d = new Date(t);
-    return `${d.getMonth() + 1}월 ${d.getDate()}일`;
+    return (d.getMonth() + 1) + T('sidebar.time.month_sep', '월 ') + d.getDate() + T('sidebar.time.day_suffix', '일');
   }
 
   /** Last path component of a working directory (macOS + Windows separators). */
@@ -76,7 +76,7 @@
 
     const title = document.createElement('div');
     title.className = 'session-title';
-    title.textContent = session.title || '새 대화';
+    title.textContent = session.title || T('chat.new_chat', '새 대화');
 
     const meta = document.createElement('div');
     meta.className = 'session-meta';
@@ -179,6 +179,11 @@
       nav.appendChild(groupEl);
     }
   }
+
+  // Language change: re-render the list (group headers + relative times).
+  window.I18N?.onChange?.(() => {
+    if (window.App?.state) render(window.App.state);
+  });
 
   window.Sidebar = { render };
 })();

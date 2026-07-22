@@ -441,6 +441,16 @@
     if (changed && sid === activeId && open) render();
   }
 
+  // (Re)apply the language-dependent static strings (bind + language change).
+  function applyStrings() {
+    if (els.title) els.title.textContent = T('panel.title', '에이전트 작업');
+    if (els.closeBtn) {
+      els.closeBtn.setAttribute('aria-label', T('panel.close', '패널 닫기'));
+      els.closeBtn.title = T('panel.close', '패널 닫기');
+    }
+    if (els.empty) els.empty.textContent = T('panel.empty', '실행 중인 작업이 없습니다');
+  }
+
   // ---- DOM binding -------------------------------------------------------------------
   function bind() {
     if (bound) return true;
@@ -454,18 +464,16 @@
     els.activity = document.getElementById('panel-activity');
     els.files = document.getElementById('panel-files');
 
-    if (els.title) els.title.textContent = T('panel.title', '에이전트 작업');
     if (els.closeBtn) {
       if (!els.closeBtn.textContent) els.closeBtn.textContent = '✕';
-      els.closeBtn.setAttribute('aria-label', T('panel.close', '패널 닫기'));
-      els.closeBtn.title = T('panel.close', '패널 닫기');
       // Direct idempotent close — safe even if the shell also wires this button.
       els.closeBtn.addEventListener('click', () => setOpen(false));
     }
     if (els.content) {
-      els.empty = el('div', 'panel-empty', T('panel.empty', '실행 중인 작업이 없습니다'));
+      els.empty = el('div', 'panel-empty');
       els.content.appendChild(els.empty);
     }
+    applyStrings();
 
     let stored = null;
     try { stored = localStorage.getItem(LS_OPEN); } catch { /* ignore */ }
@@ -475,6 +483,13 @@
     render();
     return true;
   }
+
+  // Language change: refresh static strings; re-render contents if open.
+  window.I18N?.onChange?.(() => {
+    if (!bound) return;
+    applyStrings();
+    if (open) render();
+  });
 
   window.Panel = { toggle, setActiveSession, handleEvent };
 

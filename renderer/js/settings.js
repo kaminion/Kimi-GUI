@@ -321,11 +321,15 @@
       case 'available':
       case 'downloading':
         return s.version
-          ? T('settings.update.status.downloading', `새 버전 v${s.version} 다운로드 중…`)
+          ? T('settings.update.status.downloading', '새 버전') +
+            ` v${s.version}` +
+            T('settings.update.status.downloading_suffix', ' 다운로드 중…')
           : T('settings.update.status.downloading_unknown', '새 버전 다운로드 중…');
       case 'downloaded':
         return s.version
-          ? T('settings.update.status.downloaded', `새 버전 v${s.version} 설치 준비 완료`)
+          ? T('settings.update.status.downloaded', '새 버전') +
+            ` v${s.version}` +
+            T('settings.update.status.downloaded_suffix', ' 설치 준비 완료')
           : T('settings.update.status.downloaded_unknown', '설치 준비 완료');
       case 'none':
         return T('settings.update.status.none', '최신입니다');

@@ -18,6 +18,8 @@
 (function () {
   'use strict';
 
+  const T = (k, f) => (window.I18N?.t ? window.I18N.t(k, f) : f);
+
   const ARGS_MAX = 900; // pretty-printed tool args truncation
 
   const pending = [];   // FIFO queue of { kind:'approval'|'question', sessionId, id, data }
@@ -69,13 +71,13 @@
         options: (Array.isArray(q.options) ? q.options : []).map(normOption),
         multiSelect: !!(q.multi_select ?? q.multiSelect),
         allowOther: !!(q.allow_other ?? q.allowOther),
-        otherLabel: q.other_label ?? q.otherLabel ?? '기타',
+        otherLabel: q.other_label ?? q.otherLabel ?? T('approval.other', '기타'),
       })),
     };
   }
 
   function prettyArgs(display) {
-    if (display == null) return '(인자 없음)';
+    if (display == null) return T('approval.no_args', '(인자 없음)');
     let s;
     if (typeof display === 'string') s = display;
     else { try { s = JSON.stringify(display, null, 2); } catch { s = String(display); } }
@@ -125,7 +127,7 @@
     }
   }
 
-  // ESC / backdrop = 거절 (approval) or dismiss (question).
+  // ESC / backdrop = reject (approval) or dismiss (question).
   function dismissCurrent() {
     const entry = pending.find((p) => p.id === currentId);
     if (!entry || inflight) { if (!entry) closeModal(); return; }
@@ -165,20 +167,20 @@
     modal.setAttribute('role', 'dialog');
     modal.setAttribute('aria-modal', 'true');
 
-    const title = el('div', 'modal-title', '도구 승인 요청');
+    const title = el('div', 'modal-title', T('approval.title', '도구 승인 요청'));
     const body = el('div', 'modal-body');
     const toolLine = el('div', 'approval-tool-line');
     toolLine.append(el('span', 'approval-tool-name', toolName));
     if (action) toolLine.append(el('span', 'approval-action', String(action)));
-    const hint = el('p', 'approval-hint', '에이전트가 다음 작업을 실행하려고 합니다.');
+    const hint = el('p', 'approval-hint', T('approval.hint', '에이전트가 다음 작업을 실행하려고 합니다.'));
     const args = el('pre', 'approval-args', prettyArgs(display));
     body.append(hint, toolLine, args);
 
     const actions = el('div', 'modal-actions');
-    const rejectBtn = el('button', 'btn btn-secondary', '거절');
+    const rejectBtn = el('button', 'btn btn-secondary', T('approval.reject', '거절'));
     rejectBtn.type = 'button';
     rejectBtn.addEventListener('click', () => respondApproval(entry, 'rejected'));
-    const approveBtn = el('button', 'btn btn-accent', '승인');
+    const approveBtn = el('button', 'btn btn-accent', T('approval.approve', '승인'));
     approveBtn.type = 'button';
     approveBtn.addEventListener('click', () => respondApproval(entry, 'approved'));
     actions.append(rejectBtn, approveBtn);
@@ -269,7 +271,7 @@
     modal.setAttribute('aria-modal', 'true');
 
     const firstHeader = data.questions.find((q) => q.header)?.header;
-    modal.append(el('div', 'modal-title', firstHeader || '질문'));
+    modal.append(el('div', 'modal-title', firstHeader || T('approval.question_title', '질문')));
     const body = el('div', 'modal-body');
 
     data.questions.forEach((q, qi) => {
@@ -289,7 +291,7 @@
         input.value = opt.id;
         const texts = el('span', 'question-option-texts');
         const labelRow = el('span', 'question-option-label', opt.label);
-        if (opt.recommended) labelRow.append(el('span', 'question-option-badge', '권장'));
+        if (opt.recommended) labelRow.append(el('span', 'question-option-badge', T('approval.recommended', '권장')));
         texts.append(labelRow);
         if (opt.description) texts.append(el('span', 'question-option-desc', opt.description));
         label.append(input, texts);
@@ -315,10 +317,10 @@
     });
 
     const actions = el('div', 'modal-actions');
-    const skipBtn = el('button', 'btn btn-secondary', '건너뛰기');
+    const skipBtn = el('button', 'btn btn-secondary', T('approval.skip', '건너뛰기'));
     skipBtn.type = 'button';
     skipBtn.addEventListener('click', () => dismissQuestion(entry));
-    const okBtn = el('button', 'btn btn-accent question-submit', '확인');
+    const okBtn = el('button', 'btn btn-accent question-submit', T('approval.confirm', '확인'));
     okBtn.type = 'button';
     okBtn.disabled = true;
     okBtn.addEventListener('click', () => submitQuestion(entry, modal));

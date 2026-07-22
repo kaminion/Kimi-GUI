@@ -69,12 +69,12 @@
     const diff = Date.now() - n;
     if (diff < 45 * 1000) return T('search.time.just_now', '방금 전');
     const m = Math.floor(diff / 60000);
-    if (m < 60) return T('search.time.minutes_ago', m + '분 전');
+    if (m < 60) return m + T('search.time.minutes_ago', '분 전');
     const h = Math.floor(m / 60);
-    if (h < 24) return T('search.time.hours_ago', h + '시간 전');
+    if (h < 24) return h + T('search.time.hours_ago', '시간 전');
     const d = Math.floor(h / 24);
-    if (d < 7) return T('search.time.days_ago', d + '일 전');
-    try { return new Date(n).toLocaleDateString('ko-KR'); } catch { return ''; }
+    if (d < 7) return d + T('search.time.days_ago', '일 전');
+    try { return new Date(n).toLocaleDateString(window.I18N?.lang === 'en' ? 'en-US' : 'ko-KR'); } catch { return ''; }
   }
 
   // Snippet with the (case-insensitive) query occurrence wrapped in <mark>.
@@ -344,6 +344,15 @@
   function toggle() {
     if (isOpen()) close(); else open();
   }
+
+  // Language change: refresh palette strings; re-render open results.
+  window.I18N?.onChange?.(() => {
+    if (!domWired || !paletteEl) return;
+    paletteEl.setAttribute('aria-label', T('search.title', '대화 검색'));
+    inputEl.setAttribute('placeholder', T('search.placeholder', '대화 내용 검색…'));
+    inputEl.setAttribute('aria-label', T('search.placeholder', '대화 내용 검색…'));
+    if (isOpen() && hits.length) renderResults(inputEl.value.trim());
+  });
 
   window.Search = { toggle, open, close };
 

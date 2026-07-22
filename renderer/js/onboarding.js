@@ -41,6 +41,7 @@
   let loginActive = false;    // a `kimi login` child is believed to be running
   let flashTimer = null;      // login-status "copied" flash timer
   let buttonsWired = false;
+  let lastStepUI = null;      // thunk re-rendering the current step (language change)
 
   /* ---- tiny plumbing ------------------------------------------------------- */
 
@@ -204,6 +205,7 @@
   /* ---- step 1: CLI install --------------------------------------------------- */
 
   function showCliIntro(error) {
+    lastStepUI = () => showCliIntro(error);
     setStepUI({
       title: error
         ? T('onboarding.cli_error_title', '설치에 실패했습니다')
@@ -235,6 +237,7 @@
         primaryDisabled: true,
         showProgress: true,
       });
+      lastStepUI = null; // transient install state: not safe to re-render
       const wrap = $('onboarding-progress');
       wrap?.classList.add('indeterminate');
       const fill = wrap?.querySelector('.progress-bar > div');
@@ -268,6 +271,7 @@
   /* ---- step 2: Kimi login ----------------------------------------------------- */
 
   function showLoginIntro() {
+    lastStepUI = () => showLoginIntro();
     loginActive = false;
     setStepUI({
       title: T('onboarding.login_title', 'Kimi 로그인'),
@@ -285,6 +289,7 @@
   }
 
   function showLoginWaiting(userCode, verificationUrl) {
+    lastStepUI = () => showLoginWaiting(userCode, verificationUrl);
     setStepUI({
       title: T('onboarding.login_title', 'Kimi 로그인'),
       desc: T('onboarding.login_desc', '브라우저에서 인증 코드를 입력해 로그인합니다'),
@@ -308,6 +313,7 @@
   }
 
   function showLoginError(message) {
+    lastStepUI = () => showLoginError(message);
     loginActive = false;
     setStepUI({
       title: T('onboarding.login_title', 'Kimi 로그인'),
@@ -324,6 +330,7 @@
 
   // Checkmark draw, then hand back to the shell via bootstrapRetry + launchApp.
   async function showLoginSuccess() {
+    lastStepUI = null; // transient success state: not safe to re-render
     setStepUI({
       title: T('onboarding.login_done', '로그인 완료'),
       desc: T('onboarding.login_done_desc', '잠시 후 시작합니다.'),
@@ -417,6 +424,7 @@
   /* ---- entry point ------------------------------------------------------------- */
 
   async function finish() {
+    lastStepUI = null;
     if (typeof unsubEvents === 'function') {
       try { unsubEvents(); } catch { /* ignore */ }
     }
@@ -443,4 +451,10 @@
   }
 
   window.Onboarding = { init };
+
+  // Language change: re-render the current step only while the card is visible.
+  window.I18N?.onChange?.(() => {
+    const root = $('onboarding');
+    if (root && !root.hidden && lastStepUI) lastStepUI();
+  });
 })();

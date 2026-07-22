@@ -48,36 +48,38 @@
   <div id="app">
     <aside id="sidebar">
       <div id="sidebar-header">
-        <button id="new-chat-btn" type="button" title="새 대화 (⌘N)">
+        <button id="new-chat-btn" type="button" title="New Chat (⌘N)" data-i18n-title="sidebar.new_chat_title">
           <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden="true">
             <path d="M6.5 1.5v10M1.5 6.5h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
           </svg>
-          <span>새 대화</span>
+          <span data-i18n="chat.new_chat">New Chat</span>
         </button>
-        <button id="search-open-btn" type="button" title="검색 (⌘F)" aria-label="검색">
+        <button id="search-open-btn" type="button" title="Search (⌘F)" aria-label="Search"
+                data-i18n-title="search.open_title" data-i18n-aria="search.open_aria">
           <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden="true">
             <circle cx="5.5" cy="5.5" r="4" stroke="currentColor" stroke-width="1.5"/>
             <path d="M8.7 8.7L12 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
           </svg>
         </button>
       </div>
-      <nav id="session-list" aria-label="대화 목록"></nav>
+      <nav id="session-list" aria-label="Conversations" data-i18n-aria="sidebar.list_aria"></nav>
       <div id="sidebar-footer">
-        <button id="usage-nav-btn" type="button" title="사용량 (⌘,)">
+        <button id="usage-nav-btn" type="button" title="Usage (⌘,)" data-i18n-title="usage.nav_title">
           <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden="true">
             <path d="M2 11.5v-4M6.5 11.5v-9M11 11.5V7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
           </svg>
-          <span>사용량</span>
+          <span data-i18n="usage.nav">Usage</span>
         </button>
-        <button id="settings-btn" type="button" title="설정" aria-label="설정">
+        <button id="settings-btn" type="button" title="Settings" aria-label="Settings"
+                data-i18n-title="settings.open_title" data-i18n-aria="settings.open_title">
           <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden="true">
             <circle cx="6.5" cy="6.5" r="1.8" stroke="currentColor" stroke-width="1.3"/>
             <path d="M6.5 1.2v1.6M6.5 10.2v1.6M1.2 6.5h1.6M10.2 6.5h1.6M2.7 2.7l1.1 1.1M9.2 9.2l1.1 1.1M10.3 2.7L9.2 3.8M3.8 9.2l-1.1 1.1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
           </svg>
-          <span>설정</span>
+          <span data-i18n="settings.open_title">Settings</span>
           <span id="settings-update-dot" hidden></span>
         </button>
-        <span id="server-status" role="status" aria-label="서버 상태"></span>
+        <span id="server-status" role="status" aria-label="Server status" data-i18n-aria="app.server_status_aria"></span>
       </div>
     </aside>
     <main id="main">
@@ -86,20 +88,23 @@
           <span id="chat-title"></span>
           <span id="model-label"></span>
           <span id="context-meter"></span>
-          <button id="model-select" class="pill" type="button" title="모델 선택"></button>
+          <button id="model-select" class="pill" type="button" title="Select Model" data-i18n-title="options.model.pick"></button>
           <button id="swarm-toggle" class="pill" type="button" hidden>Swarm</button>
-          <button id="panel-toggle-btn" type="button" title="작업 패널" aria-label="작업 패널">
+          <button id="panel-toggle-btn" type="button" title="Agent Panel" aria-label="Agent Panel"
+                  data-i18n-title="panel.toggle" data-i18n-aria="panel.toggle">
             <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden="true">
               <rect x="1.5" y="2.2" width="10" height="8.6" rx="2" stroke="currentColor" stroke-width="1.3"/>
               <path d="M8.6 2.2v8.6" stroke="currentColor" stroke-width="1.3"/>
             </svg>
           </button>
-          <button id="abort-btn" type="button" hidden>중단</button>
+          <button id="abort-btn" type="button" hidden data-i18n="chat.abort">Stop</button>
         </header>
         <div id="transcript"></div>
         <div id="composer-wrap">
-          <textarea id="composer" rows="1" placeholder="메시지를 입력하세요…" aria-label="메시지 입력"></textarea>
-          <button id="send-btn" type="button" title="전송 (↵)" aria-label="전송">
+          <textarea id="composer" rows="1" placeholder="Type a message…" aria-label="Message input"
+                    data-i18n-placeholder="chat.composer_placeholder" data-i18n-aria="chat.composer_aria"></textarea>
+          <button id="send-btn" type="button" title="Send (↵)" aria-label="Send"
+                  data-i18n-title="chat.send_title" data-i18n-aria="chat.send_aria">
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
               <path d="M7 12V2M3 6l4-4 4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
@@ -115,7 +120,8 @@
     <aside id="panel" hidden>
       <div id="panel-header">
         <span id="panel-title"></span>
-        <button id="panel-close-btn" type="button" title="패널 닫기" aria-label="패널 닫기">
+        <button id="panel-close-btn" type="button" title="Close Panel" aria-label="Close Panel"
+                data-i18n-title="panel.close" data-i18n-aria="panel.close">
           <svg width="11" height="11" viewBox="0 0 11 11" fill="none" aria-hidden="true">
             <path d="M2 2l7 7M9 2L2 9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
           </svg>
@@ -131,7 +137,8 @@
   </div>
   <!-- Spotlight-style content search (R2 owns behavior). -->
   <div id="search-palette" hidden>
-    <input id="search-input" type="search" placeholder="대화 내용 검색…" aria-label="대화 내용 검색">
+    <input id="search-input" type="search" placeholder="Search conversations…" aria-label="Search conversations"
+           data-i18n-placeholder="search.placeholder" data-i18n-aria="search.placeholder">
     <div id="search-results"></div>
   </div>
   <!-- Settings modal mount point (R4 owns behavior). -->
@@ -143,15 +150,15 @@
        flex-direction:column; align-items:center; justify-content:center; gap:16px;
        padding:32px; text-align:center; background:var(--bg, #fff); color:var(--text, #1d1d1f);
        font-family:var(--font-ui, -apple-system, sans-serif);">
-    <h1 style="font-size:17px; font-weight:600; margin:0;">Kimi를 시작할 수 없습니다</h1>
+    <h1 style="font-size:17px; font-weight:600; margin:0;" data-i18n="app.boot_error_title">Kimi Couldn’t Start</h1>
     <p id="boot-error-message" style="font-size:13px; margin:0; max-width:420px;
        color:var(--text-secondary, #6e6e73); word-break:break-all;"></p>
-    <p style="font-size:12px; margin:0; max-width:420px; color:var(--text-dim, #86868b);">
-      Kimi Code CLI가 설치되어 있는지 확인한 뒤 다시 시도하세요.
-    </p>
+    <p style="font-size:12px; margin:0; max-width:420px; color:var(--text-dim, #86868b);"
+       data-i18n="app.boot_error_hint">Make sure Kimi Code CLI is installed, then try again.</p>
     <button id="boot-retry-btn" type="button" style="font-size:13px; padding:6px 16px;
       border:none; border-radius:6px; cursor:pointer;
-      background:var(--accent, #007AFF); color:var(--accent-text, #fff);">다시 시도</button>
+      background:var(--accent, #007AFF); color:var(--accent-text, #fff);"
+      data-i18n="app.boot_retry">Try Again</button>
   </div>
   <script src="vendor/marked.min.js"></script>
   <script src="vendor/highlight.min.js"></script>

@@ -34,6 +34,8 @@
   const RELOAD_DEBOUNCE_MS = 300;
   const HIGHLIGHT_FLASH_MS = 1200;  // keep in sync with search-highlight-flash in search.css
 
+  const T = (k, f) => (window.I18N?.t ? window.I18N.t(k, f) : f);
+
   // Event types we deliberately ignore (no transcript impact).
   // NOTE: turn.ended / prompt.completed / prompt.aborted are NOT ignored — they
   // trigger an authoritative REST resync, because live turns stream deltas
@@ -276,7 +278,7 @@
       if (typeof o !== 'string') { try { o = JSON.stringify(o, null, 2); } catch { o = String(o); } }
       out += (out ? '\n\n' : '') + o;
     }
-    if (!out.trim()) out = '(내용 없음)';
+    if (!out.trim()) out = T('chat.tool.no_content', '(내용 없음)');
     return trunc(out, TOOL_BODY_MAX);
   }
 
@@ -299,7 +301,7 @@
     const box = el('details', 'msg-thinking');
     const sum = document.createElement('summary');
     sum.className = 'msg-thinking-header';
-    sum.textContent = '사고 과정';
+    sum.textContent = T('chat.thinking', '사고 과정');
     const body = el('div', 'msg-thinking-body');
     body.innerHTML = mdRender(details);
     box.append(sum, body);
@@ -317,11 +319,11 @@
         const img = document.createElement('img');
         img.className = 'msg-attachment-img';
         img.src = url;
-        img.alt = '첨부 이미지';
+        img.alt = T('chat.attachment.image', '첨부 이미지');
         return img;
       }
     }
-    return el('div', 'msg-attachment-chip', part.name || part.type || '첨부 파일');
+    return el('div', 'msg-attachment-chip', part.name || part.type || T('chat.attachment.file', '첨부 파일'));
   }
 
   // Fill a .msg-row element with the blocks of one message.
@@ -435,7 +437,7 @@
       '<svg class="transcript-empty-glyph" viewBox="0 0 64 64" width="44" height="44" aria-hidden="true">' +
       '<path fill="currentColor" d="M44.6 6.9A27 27 0 1 0 57 44.6 24.5 24.5 0 0 1 44.6 6.9z"/>' +
       '</svg>';
-    wrap.append(el('p', 'transcript-empty-text', '무엇을 도와드릴까요?'));
+    wrap.append(el('p', 'transcript-empty-text', T('chat.empty_state', '무엇을 도와드릴까요?')));
     transcriptEl.append(wrap);
   }
 
@@ -663,13 +665,13 @@
     Promise.resolve()
       .then(() => app.sendPrompt(text))
       .catch(() => {
-        appendSystemNote('메시지 전송에 실패했어요. 다시 시도해 주세요.');
+        appendSystemNote(T('chat.send_failed', '메시지 전송에 실패했어요. 다시 시도해 주세요.'));
         setBusy(false);
       });
   }
 
   function wireComposer() {
-    composerEl.setAttribute('placeholder', '메시지를 입력하세요…');
+    composerEl.setAttribute('placeholder', T('chat.composer_placeholder', '메시지를 입력하세요…'));
     composerEl.addEventListener('keydown', (e) => {
       // Enter sends; Shift+Enter inserts a newline. isComposing guards IME (한글) input.
       if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
@@ -763,4 +765,13 @@
   } else {
     init();
   }
+
+  // Language change: refresh the composer placeholder and the empty-state
+  // copy. The transcript itself is not re-rendered (history stays as-is).
+  window.I18N?.onChange?.(() => {
+    if (!initialized) return;
+    composerEl.setAttribute('placeholder', T('chat.composer_placeholder', '메시지를 입력하세요…'));
+    const empty = transcriptEl.querySelector('.transcript-empty-text');
+    if (empty) empty.textContent = T('chat.empty_state', '무엇을 도와드릴까요?');
+  });
 })();
