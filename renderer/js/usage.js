@@ -1,4 +1,13 @@
-/* usage.js — usage view: account quota cards + current-session usage. */
+/* usage.js — usage view: daily tokens, account limit cards, session usage.
+ *
+ * v5 layout: three explicitly labeled sections, each headed by a
+ * .usage-section-title plus a one-line .usage-section-desc caption —
+ *   1. '오늘 사용량' (#daily-usage)   — this device's token stats (NOT limits)
+ *   2. '계정 한도'   (#quota-cards)   — weekly card vs 5-hour card (distinct
+ *      colors, reset dates always visible) + extra balance when present
+ *   3. '현재 세션'   (#session-usage) — active conversation rows
+ * No title-tooltips anywhere: clarity comes from visible captions.
+ */
 'use strict';
 
 (function () {
@@ -42,21 +51,83 @@
     return bar;
   }
 
-  function quotaCard(title, value, r, caption) {
-    const card = el('div', 'usage-card');
-    card.appendChild(el('div', 'usage-card-title', title));
-    card.appendChild(el('div', 'usage-card-value', value));
-    if (r != null) {
-      card.appendChild(progressBar(r));
-      card.appendChild(el('div', 'usage-card-caption', Math.round(r * 100) + T('usage.percent_used', '% 사용')));
+  /** h2 section title + one-line desc caption, in that order. */
+  function sectionHead(container, titleKey, titleFallback, descKey, descFallback) {
+    container.appendChild(el('h2', 'usage-section-title', T(titleKey, titleFallback)));
+    container.appendChild(el('p', 'usage-section-desc', T(descKey, descFallback)));
+  }
+
+  /* ---- reset-time formatting (absolute date + relative, per-locale order) ---- */
+
+  const isEn = () => window.I18N?.lang === 'en';
+
+  /** ko '7월 26일 00:17' / en 'Jul 26, 12:17 AM'; null on unparseable input. */
+  function fmtResetDate(iso) {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return null;
+    return new Intl.DateTimeFormat(
+      isEn() ? 'en-US' : 'ko-KR',
+      isEn()
+        ? { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }
+        : { month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: false }
+    ).format(d);
+  }
+
+  /** ko '3일 후' / '2시간 후', en 'in 3 days' / 'in 2 hours'; null when past. */
+  function relText(iso) {
+    const ms = new Date(iso).getTime() - Date.now();
+    if (!Number.isFinite(ms) || ms <= 0) return null;
+    const days = Math.round(ms / 86400000);
+    if (days >= 1) {
+      return isEn() ? `in ${days} ${days === 1 ? 'day' : 'days'}` : `${days}일 후`;
     }
-    if (caption) card.appendChild(el('div', 'usage-card-caption', caption));
+    const hours = Math.max(1, Math.round(ms / 3600000));
+    return isEn() ? `in ${hours} ${hours === 1 ? 'hour' : 'hours'}` : `${hours}시간 후`;
+  }
+
+  /**
+   * Reset meta line: ko '<date> 초기화 (<rel>)' / en 'Resets <date> (<rel>)'.
+   * Word order differs per language, so the two orders branch here instead of
+   * a template. `key` is usage.weekly.reset / usage.window.reset.
+   */
+  function resetLine(iso, key) {
+    if (typeof iso !== 'string' || !iso) return null;
+    const date = fmtResetDate(iso);
+    if (!date) return null;
+    const rel = relText(iso);
+    const relPart = rel ? ` (${rel})` : '';
+    return isEn()
+      ? `${T(key, '초기화')} ${date}${relPart}`
+      : `${date} ${T(key, '초기화')}${relPart}`;
+  }
+
+  /* ---- section 2: account limit cards ---- */
+
+  /**
+   * One limit card (weekly or 5-hour): colored dot + title, `used / limit`
+   * value with the % inlined, 4px bar (color scoped by the card class),
+   * reset-date meta line, then the caption explaining what the limit is.
+   */
+  function limitCard(cls, title, used, limit, meta, caption) {
+    const card = el('div', `usage-card limit-card ${cls}`);
+    const titleRow = el('div', 'usage-card-title limit-card-title');
+    titleRow.appendChild(el('span', 'limit-dot'));
+    titleRow.appendChild(document.createTextNode(title));
+    card.appendChild(titleRow);
+
+    const r = ratio(used, limit);
+    const value = el('div', 'usage-card-value limit-card-value');
+    value.appendChild(document.createTextNode(`${fmtNum(used)} / ${fmtNum(limit)}`));
+    if (r != null) value.appendChild(el('span', 'limit-card-pct', `${Math.round(r * 100)}%`));
+    card.appendChild(value);
+
+    card.appendChild(progressBar(r));
+    if (meta) card.appendChild(el('div', 'limit-card-meta', meta));
+    card.appendChild(el('div', 'usage-card-caption', caption));
     return card;
   }
 
-  /* ---- account quota cards ---- */
-
-  function renderQuotaCards(container, quota) {
+  function renderLimitCards(container, quota) {
     const grid = el('div', 'usage-card-grid');
     if (!quota) {
       // Quota undiscoverable: point the user at the web console instead.
@@ -71,36 +142,31 @@
       card.appendChild(openBtn);
       grid.appendChild(card);
     } else {
-      const resets =
-        typeof quota.resetsAt === 'string' && quota.resetsAt
-          ? T('usage.resets', '재설정: ') +
-            new Date(quota.resetsAt).toLocaleString(window.I18N?.lang === 'en' ? 'en-US' : 'ko-KR')
-          : null;
       grid.appendChild(
-        quotaCard(
-          T('usage.weekly', '주간 사용량'),
-          `${fmtNum(quota.weeklyUsed)} / ${fmtNum(quota.weeklyLimit)}`,
-          ratio(quota.weeklyUsed, quota.weeklyLimit),
-          resets
+        limitCard(
+          'limit-weekly',
+          T('usage.weekly.title', '주간 한도'),
+          quota.weeklyUsed,
+          quota.weeklyLimit,
+          resetLine(quota.resetsAt, 'usage.weekly.reset'),
+          T('usage.weekly.desc', '구독 주간 할당량 — 매주 초기화')
         )
       );
       grid.appendChild(
-        quotaCard(
-          T('usage.window_5h', '5시간 윈도우'),
-          `${fmtNum(quota.window5hUsed)} / ${fmtNum(quota.window5hLimit)}`,
-          ratio(quota.window5hUsed, quota.window5hLimit),
-          null
+        limitCard(
+          'limit-window',
+          T('usage.window.title', '5시간 한도'),
+          quota.window5hUsed,
+          quota.window5hLimit,
+          resetLine(quota.window5hResetsAt, 'usage.window.reset'),
+          T('usage.window.desc', '단기 속도 제한 — 사용 시점부터 5시간 롤링')
         )
       );
       if (quota.extraBalance != null) {
-        grid.appendChild(
-          quotaCard(
-            T('usage.extra_balance', '추가 잔액'),
-            fmtNum(quota.extraBalance),
-            null,
-            null
-          )
-        );
+        const card = el('div', 'usage-card');
+        card.appendChild(el('div', 'usage-card-title', T('usage.extra_balance', '추가 잔액')));
+        card.appendChild(el('div', 'usage-card-value', fmtNum(quota.extraBalance)));
+        grid.appendChild(card);
       }
     }
     container.appendChild(grid);
@@ -140,62 +206,12 @@
   }
 
   /**
-   * v4 (R2): one '한도' progress row — label + used/limit (%) + bar. The
-   * /usages API has no daily window, so the daily section shows the live
-   * weekly / 5-hour limits next to today's tokens.
-   */
-  function limitRow(label, used, limit) {
-    const row = el('div', 'daily-limit-row');
-    const head = el('div', 'daily-limit-head');
-    head.appendChild(el('span', 'daily-limit-label', label));
-    const r = ratio(used, limit);
-    head.appendChild(
-      el(
-        'span',
-        'daily-limit-value',
-        r == null ? '—' : `${fmtNum(used)} / ${fmtNum(limit)} (${Math.round(r * 100)}%)`
-      )
-    );
-    row.appendChild(head);
-    row.appendChild(progressBar(r)); // clamps width; null ratio -> empty bar
-    return row;
-  }
-
-  /** '한도' sub-block for the daily section, fed by render()'s getQuota(). */
-  function renderDailyLimits(quota) {
-    const box = el('div', 'daily-limits');
-    box.appendChild(el('h3', 'daily-limits-title', T('usage.daily.limits', '한도')));
-    if (!quota) {
-      box.appendChild(
-        el('p', 'daily-limits-unavailable', T('usage.daily.limit_unavailable', '한도 정보를 불러올 수 없습니다'))
-      );
-      return box;
-    }
-    box.appendChild(
-      limitRow(
-        T('usage.daily.weekly_limit', '주간 한도'),
-        quota.weeklyUsed,
-        quota.weeklyLimit
-      )
-    );
-    box.appendChild(
-      limitRow(
-        T('usage.daily.window_5h_limit', '5시간 한도'),
-        quota.window5hUsed,
-        quota.window5hLimit
-      )
-    );
-    return box;
-  }
-
-  /**
-   * '오늘 사용량' section, inserted ABOVE the quota cards (created lazily so
+   * Section 1 '오늘 사용량', inserted ABOVE the limit cards (created lazily so
    * index.html stays untouched). Hidden entirely when the preload lacks
-   * getDailyUsage (older backend) or the fetch fails.
-   * v4: takes render()'s shared getQuota() promise for the '한도' sub-block
-   * (one fetch feeds both here and the account cards — no refetch).
+   * getDailyUsage (older backend) or the fetch fails. v5: token stats only —
+   * the account limits live in section 2, never duplicated here.
    */
-  async function renderDaily(quotaPromise) {
+  async function renderDaily() {
     const view = document.getElementById('usage-view');
     if (!view || typeof window.kimi?.getDailyUsage !== 'function') return;
     let box = document.getElementById('daily-usage');
@@ -215,11 +231,19 @@
     const days = Array.isArray(data?.days) ? data.days : [];
     if (!data || days.length === 0) {
       box.hidden = true;
+      // Not a rendered section: drop the marker class so no stray divider
+      // appears above section 2.
+      box.classList.remove('usage-section');
       return;
     }
     box.hidden = false;
+    box.classList.add('usage-section');
 
-    box.appendChild(el('h2', 'usage-section-title', T('usage.daily.title', '오늘 사용량')));
+    sectionHead(
+      box,
+      'usage.section.daily', '오늘 사용량',
+      'usage.daily.desc', '이 기기에서 기록된 토큰 사용량입니다 · 한도가 아닙니다'
+    );
 
     const todayRow = el('div', 'daily-today');
     const today = data.today ?? {};
@@ -237,10 +261,6 @@
       todayRow.appendChild(item);
     }
     box.appendChild(todayRow);
-
-    // v4 (R2): '한도' sub-block — below today numbers, above the chart.
-    const quota = quotaPromise ? await quotaPromise : null;
-    box.appendChild(renderDailyLimits(quota));
 
     const chart = el('div', 'daily-chart');
     const max = days.reduce(
@@ -345,7 +365,7 @@
 
   /* ---- public API ---- */
 
-  /** Full render: daily stats + quota cards + active session usage. Called when the view shows. */
+  /** Full render: daily stats + limit cards + active session usage. Called when the view shows. */
   async function render(state) {
     currentState = state;
     const quotaBox = document.getElementById('quota-cards');
@@ -353,21 +373,30 @@
     if (!quotaBox || !sessionBox) return;
     quotaBox.textContent = '';
     sessionBox.textContent = '';
-    // v4 (R2): one getQuota() call feeds both the daily '한도' sub-block and
-    // the account quota cards — share the promise, never refetch.
+    quotaBox.classList.add('usage-section');
+    sessionBox.classList.add('usage-section');
+    // One getQuota() call per render feeds the section-2 limit cards.
     const quotaPromise = Promise.resolve()
       .then(() => window.kimi.getQuota())
       .catch((err) => {
         console.error('getQuota failed', err);
         return null;
       });
-    void renderDaily(quotaPromise); // '오늘 사용량' section above the quota cards; no need to block on it
-    quotaBox.appendChild(el('h2', 'usage-section-title', T('usage.account_quota', '계정 할당량')));
-    sessionBox.appendChild(el('h2', 'usage-section-title', T('usage.current_session', '현재 세션')));
+    void renderDaily(); // section 1 above the limit cards; no need to block on it
+    sectionHead(
+      quotaBox,
+      'usage.section.limits', '계정 한도',
+      'usage.limits.desc', '이 계정에 적용되는 구독 한도입니다'
+    );
+    sectionHead(
+      sessionBox,
+      'usage.section.session', '현재 세션',
+      'usage.session.desc', '선택된 대화의 토큰 사용량입니다'
+    );
     renderSessionUsage(sessionBox, state);
 
     const quota = await quotaPromise;
-    renderQuotaCards(quotaBox, quota);
+    renderLimitCards(quotaBox, quota);
 
     const activeId = state?.activeId;
     if (activeId) {

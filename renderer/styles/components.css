@@ -1305,7 +1305,7 @@
 /* ==========================================================================
    usage v3 — daily usage section (B4; additive append, owned classes
    .daily-usage .daily-today .daily-chart .daily-col .daily-bars .daily-bar
-   .daily-day .daily-legend .daily-swatch — keep this section at END of file)
+   .daily-day .daily-legend .daily-swatch — keep appends below this block)
    ========================================================================== */
 
 /* Container div#daily-usage injected by usage.js above #quota-cards */
@@ -1428,50 +1428,100 @@
 }
 
 /* ==========================================================================
-   usage v4 — daily '한도' sub-block (R2; additive append, owned classes
-   .daily-limits .daily-limits-title .daily-limit-row .daily-limit-head
-   .daily-limit-label .daily-limit-value .daily-limits-unavailable —
+   usage v5 — three labeled sections + distinct limit cards (additive append;
+   owned classes .usage-section .usage-section-desc .limit-card
+   .limit-card-title .limit-dot .limit-card-value .limit-card-pct
+   .limit-card-meta .limit-weekly .limit-window, owned var --limit-window —
    keep this section at END of file, below the usage v3 block)
    ========================================================================== */
 
-.daily-limits {
+/* 5-hour window accent: system purple (dark #BF5AF2 / light #AF52DE) */
+:root {
+  --limit-window: #bf5af2;
+}
+
+:root[data-theme="light"] {
+  --limit-window: #af52de;
+}
+
+/* Section separation: 24px gap with a hairline centered inside the gap.
+   A ::before (not border-top) keeps the session card's rounded corners clean. */
+#usage-view .usage-section {
+  position: relative;
+}
+
+#usage-view .usage-section + .usage-section {
+  margin-top: var(--space-4);
+}
+
+#usage-view .usage-section + .usage-section::before {
+  content: '';
+  position: absolute;
+  top: -12px; /* midpoint of the 24px gap */
+  left: 0;
+  right: 0;
+  border-top: 0.5px solid var(--border);
+}
+
+/* Sibling margin now owns the gap below the daily section */
+.daily-usage.usage-section {
+  margin-bottom: 0;
+}
+
+/* One-line caption under each .usage-section-title */
+.usage-section-desc {
   margin: 0 0 var(--space-3);
-}
-
-.daily-limits-title {
-  margin: 0 0 var(--space-1);
   font-size: 12px;
-  font-weight: 600;
-  color: var(--text-secondary);
+  color: var(--text-dim);
 }
 
-.daily-limit-row {
+/* Limit cards (weekly / 5-hour): colored dot ties the title to the bar */
+.limit-card-title {
   display: flex;
-  flex-direction: column;
-  gap: 3px;
-  padding: 3px 0;
+  align-items: center;
+  gap: 6px;
 }
 
-.daily-limit-head {
+.limit-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.limit-weekly .limit-dot {
+  background: var(--accent);
+}
+
+.limit-window .limit-dot {
+  background: var(--limit-window);
+}
+
+/* `used / limit` value with the percentage inlined at a smaller size */
+.limit-card-value {
   display: flex;
   align-items: baseline;
-  justify-content: space-between;
   gap: var(--space-2);
 }
 
-.daily-limit-label {
-  font-size: 12px;
+.limit-card-pct {
+  font-size: 14px;
+  font-weight: 600;
   color: var(--text-secondary);
-}
-
-.daily-limit-value {
-  font-size: 12px;
-  color: var(--text-dim);
   font-variant-numeric: tabular-nums;
 }
 
-.daily-limits-unavailable {
-  margin: 0;
+/* Bar colors: weekly = accent, 5-hour = purple (scoped override) */
+.limit-weekly .progress-bar > :first-child {
+  background: var(--accent);
+}
+
+.limit-window .progress-bar > :first-child {
+  background: var(--limit-window);
+}
+
+/* Reset-date line: always visible, one step brighter than the dim caption */
+.limit-card-meta {
   font-size: 12px;
-  color: var(--text-dim);
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
 }
