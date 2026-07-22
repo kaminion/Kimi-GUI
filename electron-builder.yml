@@ -1,0 +1,54 @@
+# electron-builder configuration for Kimi Desktop
+# Docs: https://www.electron.build/configuration
+
+appId: com.kimi.desktop
+productName: "Kimi Desktop"
+
+directories:
+  output: dist
+
+# Pack only runtime files; docs/ (incl. docs/ref ground-truth specs) stays out of the bundle.
+files:
+  - package.json
+  - main/**/*
+  - renderer/**/*
+  - vendor/**/*
+  - assets/**/*
+  - "!docs/**"
+  - "!dist/**"
+
+mac:
+  category: public.app-category.developer-tools
+  target:
+    - dmg
+    - zip
+  icon: assets/icon.png # electron-builder auto-generates .icns (use >=512x512 png)
+  hardenedRuntime: false # dev builds: skip hardened runtime / notarization requirements
+  artifactName: ${productName}-${version}-mac-${arch}.${ext}
+
+dmg:
+  window:
+    width: 540
+    height: 380
+  # Standard drag-to-Applications layout: app icon left, Applications alias right.
+  contents:
+    - x: 140
+      y: 180
+      type: file
+    - x: 400
+      y: 180
+      type: link
+      path: /Applications
+
+win:
+  target:
+    - nsis
+    - portable
+  icon: assets/icon.png # electron-builder auto-generates .ico (use >=256x256 png)
+  artifactName: ${productName}-${version}-win-${arch}.${ext}
+
+nsis:
+  oneClick: false # assisted installer with wizard pages
+  perMachine: false # per-user install, no admin rights needed
+  allowToChangeInstallationDirectory: true
+  shortcutName: Kimi

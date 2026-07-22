@@ -1,0 +1,19 @@
+{
+  "name": "kimi-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Desktop GUI wrapper around the Kimi Code CLI (kimi web)",
+  "main": "main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^43.2.0",
+    "electron-builder": "^26.15.3"
+  },
+  "dependencies": {
+    "highlight.js": "^11.11.1",
+    "marked": "^18.0.7"
+  }
+}

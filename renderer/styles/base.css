@@ -1,0 +1,213 @@
+/* ==========================================================================
+   Kimi Desktop — base.css
+   Design tokens, reset, focus rings, scrollbars.
+   Light theme on :root; dark via prefers-color-scheme.
+   Token names marked (contract) are fixed by ARCHITECTURE.md — do not rename.
+   ========================================================================== */
+
+:root {
+  /* ---- Color tokens (contract) ---- */
+  --bg: #ffffff;
+  --bg-secondary: #f5f5f7;
+  --sidebar-bg: rgba(246, 246, 248, 0.8);
+  --text: #1d1d1f;
+  --text-secondary: #6e6e73;
+  --text-dim: #86868b;
+  --accent: #007aff;
+  --accent-text: #ffffff;
+  --border: rgba(0, 0, 0, 0.1);
+  --danger: #ff3b30;
+  --success: #34c759;
+  --warn: #ff9500;
+  --code-bg: #f5f5f7;
+
+  /* ---- Radii (contract) ---- */
+  --radius-l: 10px;
+  --radius-m: 8px;
+  --radius-s: 6px;
+
+  /* ---- Type (contract) ---- */
+  --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
+    "Apple SD Gothic Neo", "Malgun Gothic", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+
+  /* ---- Spacing scale (8pt grid; 4px half-step for fine tuning) ---- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 16px;
+  --space-4: 24px;
+  --space-5: 32px;
+  --space-6: 48px;
+
+  /* ---- Derived tokens (design-agent additions, safe to use) ---- */
+  --radius-xl: 12px;
+  --accent-soft: rgba(0, 122, 255, 0.15);
+  --hover-bg: rgba(0, 0, 0, 0.04);
+  --active-bg: rgba(0, 0, 0, 0.07);
+  --danger-soft: rgba(255, 59, 48, 0.1);
+  --header-bg: rgba(255, 255, 255, 0.8);
+  --selection-bg: rgba(0, 122, 255, 0.28);
+  --scrollbar-thumb: rgba(0, 0, 0, 0.2);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.05), 0 4px 16px rgba(0, 0, 0, 0.05);
+  --shadow-modal: 0 12px 40px rgba(0, 0, 0, 0.18);
+
+  /* ---- Layout metrics ---- */
+  --titlebar-h: 34px;
+  --sidebar-w: 260px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1d1d1f;
+    --bg-secondary: #2c2c2e;
+    --sidebar-bg: rgba(30, 30, 32, 0.72);
+    --text: #f5f5f7;
+    --text-secondary: #a1a1a6;
+    --text-dim: #6e6e73;
+    --accent: #0a84ff;
+    --accent-text: #ffffff;
+    --border: rgba(255, 255, 255, 0.12);
+    --danger: #ff453a;
+    --success: #30d158;
+    --warn: #ff9f0a;
+    --code-bg: #2c2c2e;
+
+    --accent-soft: rgba(10, 132, 255, 0.24);
+    --hover-bg: rgba(255, 255, 255, 0.06);
+    --active-bg: rgba(255, 255, 255, 0.1);
+    --danger-soft: rgba(255, 69, 58, 0.16);
+    --header-bg: rgba(29, 29, 31, 0.8);
+    --selection-bg: rgba(10, 132, 255, 0.35);
+    --scrollbar-thumb: rgba(255, 255, 255, 0.25);
+    --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.4);
+    --shadow-modal: 0 12px 40px rgba(0, 0, 0, 0.5);
+  }
+}
+
+/* ---- Reset ---- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  height: 100%;
+  -webkit-text-size-adjust: none;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+body {
+  height: 100vh;
+  overflow: hidden;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: default; /* macOS convention: no hand cursor on buttons */
+  user-select: none;
+}
+
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+ul,
+ol {
+  list-style: none;
+}
+
+img,
+svg,
+video {
+  display: block;
+  max-width: 100%;
+}
+
+/* [hidden] must beat any display set elsewhere */
+[hidden] {
+  display: none !important;
+}
+
+::selection {
+  background: var(--selection-bg);
+}
+
+::placeholder {
+  color: var(--text-dim);
+  opacity: 1;
+}
+
+/* ---- Focus ---- */
+:focus {
+  outline: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* ---- Thin scrollbars (Chromium) ---- */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-dim);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ---- Reduced motion ---- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
