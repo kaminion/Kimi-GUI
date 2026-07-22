@@ -97,6 +97,13 @@ const cli = {
 };
 let cliLaunchPromise = null;
 let isShuttingDown = false;
+// Launch generation counter. Every lifecycle transition (teardown, and thus
+// every new launch) bumps it; launches capture their generation and must
+// verify it is still current before assigning cli.client or reporting ready.
+// Any exit/status event from a non-current generation is ignored.
+let cliGen = 0;
+const CLI_LAUNCH_PORT = 58900; // KimiClient.launch's historical default
+const CLI_LAUNCH_ATTEMPTS = 2; // 2nd attempt uses a fresh port (base + 1)
 
 // direct engine state: sessionId -> { controller, turnId, contextLimit, approvals: Map<approvalId, resolve> }
 const activeTurns = new Map();
@@ -330,7 +337,9 @@ async function setEngine(next) {
 /** bootstrapRetry: re-init the active engine after onboarding completes. */
 async function retry() {
   if (currentEngine !== 'cli') return; // direct has no process to relaunch
-  await shutdownCli();
+  await shutdownCli(); // supersedes (bumps the generation of) any in-flight launch
+  // ensureCliLaunched waits out the superseded launch (it abandons and kills
+  // its own child) before relaunching — no dying/new daemon overlap.
   await ensureCliLaunched();
 }
 
@@ -363,28 +372,70 @@ function loadKimiClient() {
   }
 }
 
-function ensureCliLaunched() {
-  if (cli.client && cli.ready) return Promise.resolve();
-  if (cliLaunchPromise) return cliLaunchPromise;
-  cliLaunchPromise = doLaunchCli().finally(() => {
-    cliLaunchPromise = null;
-  });
+/**
+ * Single-flight cli launch. Joiners of an in-flight launch must never be
+ * stranded: a superseded launch abandons without assigning a client, so after
+ * joining we re-check and launch again while the cli engine is wanted.
+ */
+async function ensureCliLaunched() {
+  if (cli.client && cli.ready) return;
+  while (!cli.client && cliLaunchPromise) {
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      await cliLaunchPromise;
+    } catch { /* launch errors are recorded in cli state */ }
+  }
+  if (cli.client && cli.ready) return;
+  if (!cliLaunchPromise) {
+    cliLaunchPromise = doLaunchCli().finally(() => {
+      cliLaunchPromise = null;
+    });
+  }
   return cliLaunchPromise;
 }
 
 async function doLaunchCli() {
+  // Teardown bumps the generation; everything this launch does afterwards is
+  // valid only while its generation stays current (no engine switch, no
+  // retry, no shutdown superseded it).
   await shutdownCli();
-  try {
-    const { KimiClient } = loadKimiClient();
-    // Resolve the binary explicitly (env KIMI_CLI_PATH -> PATH lookup ->
-    // ~/.kimi-code/bin) so a CLI installed by onboarding is found even when
-    // the app was launched from Finder with a minimal PATH.
-    const kimiPath = await resolveKimiPath();
-    const { client, child } = await KimiClient.launch({ kimiPath });
+  const gen = cliGen;
+  const isCurrent = () => gen === cliGen && !isShuttingDown && currentEngine === 'cli';
+  cli.error = null;
+
+  let lastErr = null;
+  for (let attempt = 0; attempt < CLI_LAUNCH_ATTEMPTS && isCurrent(); attempt += 1) {
+    let launched = null;
+    try {
+      const { KimiClient } = loadKimiClient();
+      // Resolve the binary explicitly (env KIMI_CLI_PATH -> PATH lookup ->
+      // ~/.kimi-code/bin) so a CLI installed by onboarding is found even when
+      // the app was launched from Finder with a minimal PATH.
+      const kimiPath = await resolveKimiPath();
+      // eslint-disable-next-line no-await-in-loop
+      launched = await KimiClient.launch({ kimiPath, port: CLI_LAUNCH_PORT + attempt });
+    } catch (err) {
+      // Exited before/without ready (spawn failure, banner timeout, pre-banner
+      // exit): launch failure — retry once on a fresh port.
+      lastErr = err;
+      continue;
+    }
+    const { client, child } = launched;
+    if (!isCurrent()) {
+      // Superseded mid-launch (engine switched away / retry / app quit):
+      // kill the just-spawned daemon and abandon. Never assign or leak a
+      // stale-generation child.
+      await client.shutdown().catch(() => { /* best-effort */ });
+      return;
+    }
     cli.client = client;
     cli.child = child;
     cli.error = null;
-    wireCliEvents(client, child);
+    // Per-generation readiness: the exit handler must know whether THIS
+    // generation had finished launching, independent of later status events
+    // (a dying daemon emits status before exit, which would mask readiness).
+    const lifecycle = { ready: false };
+    wireCliEvents(client, child, gen, lifecycle);
     console.log('[backend] cli engine ready');
 
     // Open the event WebSocket and subscribe to all known sessions so live
@@ -401,28 +452,43 @@ async function doLaunchCli() {
 
     // Best-effort metadata for getState(); failures must not break the launch.
     try {
+      // eslint-disable-next-line no-await-in-loop
       const meta = await client.meta();
       cli.version = (meta && meta.server_version) ?? null;
     } catch {
       cli.version = null;
     }
     try {
+      // eslint-disable-next-line no-await-in-loop
       const auth = await client.auth();
       cli.defaultModel = (auth && auth.default_model) ?? null;
     } catch {
       cli.defaultModel = null;
     }
+    if (!isCurrent()) return; // superseded while probing meta/auth
+    if (child.exitCode !== null || child.signalCode !== null) {
+      // Died between assignment and ready — launch failure; the exit handler
+      // stays silent pre-ready and this attempt retries on a fresh port.
+      cli.client = null;
+      cli.child = null;
+      lastErr = new Error(`kimi server exited during startup (code ${child.exitCode ?? child.signalCode})`);
+      continue;
+    }
+    lifecycle.ready = true;
     cli.ready = true;
     pushStatus();
-  } catch (err) {
+    return;
+  }
+
+  if (isCurrent()) {
     cli.ready = false;
-    cli.error = err.message;
-    console.error(`[backend] cli engine launch failed: ${err.message}`);
+    cli.error = (lastErr && lastErr.message) || 'kimi server failed to start';
+    console.error(`[backend] cli engine launch failed: ${cli.error}`);
     pushStatus();
   }
 }
 
-function wireCliEvents(client, child) {
+function wireCliEvents(client, child, gen, lifecycle) {
   const safe = (fn) => (...args) => {
     try {
       fn(...args);
@@ -435,7 +501,7 @@ function wireCliEvents(client, child) {
   client.on(
     'status',
     safe(({ ready, error } = {}) => {
-      if (client !== cli.client) return; // superseded
+      if (gen !== cliGen || client !== cli.client) return; // superseded
       cli.ready = !!ready;
       cli.error = error ?? null;
       pushStatus();
@@ -443,10 +509,15 @@ function wireCliEvents(client, child) {
   );
   if (child) {
     child.once('exit', (code, signal) => {
-      if (isShuttingDown || client !== cli.client) return;
+      if (isShuttingDown || gen !== cliGen || client !== cli.client) return; // superseded
       cli.ready = false;
       cli.client = null;
       cli.child = null;
+      // Pre-ready exits are launch failures (the launch loop retries on a
+      // fresh port); only a post-ready exit is a fatal status. Readiness comes
+      // from this generation's own lifecycle flag — the dying daemon's final
+      // status event clears cli.ready first and must not mask it.
+      if (!lifecycle.ready) return;
       cli.error = `kimi server exited unexpectedly (code ${code}, signal ${signal})`;
       pushStatus();
     });
@@ -454,13 +525,17 @@ function wireCliEvents(client, child) {
 }
 
 async function shutdownCli() {
+  // Supersede any in-flight launch and silence the current client's handlers.
+  cliGen += 1;
   const client = cli.client;
   cli.client = null;
   cli.child = null;
   cli.ready = false;
   if (!client) return;
   try {
-    const timeout = new Promise((resolve) => setTimeout(resolve, 3000));
+    // KimiClient.shutdown() is bounded (POST /shutdown courtesy + SIGTERM,
+    // SIGKILL fallback) — 5s is generous headroom, not a leak path.
+    const timeout = new Promise((resolve) => setTimeout(resolve, 5000));
     await Promise.race([client.shutdown(), timeout]);
   } catch (err) {
     console.warn(`[backend] cli shutdown failed: ${err.message}`);
@@ -692,7 +767,19 @@ async function getMessages(sessionId) {
     const client = requireCli();
     // Viewing a session subscribes it to the WS event stream (idempotent).
     if (typeof sessionId === 'string' && sessionId) client.subscribeSession(sessionId);
-    return client.getMessages(sessionId);
+    try {
+      return await client.getMessages(sessionId);
+    } catch (err) {
+      // The daemon hard-fails sessions whose workspace dir vanished
+      // ("workspace root ... does not exist"). The transcript is still on
+      // disk — serve it from the local CLI tree so history always loads.
+      const cliSessions = loadCliSessions();
+      if (cliSessions && typeof cliSessions.resolve === 'function') {
+        const found = await cliSessions.resolve(sessionId).catch(() => null);
+        if (found) return cliSessions.getMessages(sessionId);
+      }
+      throw err;
+    }
   }
   const d = requireDirect();
   // V4: route by where the id resolves (direct store first, else CLI tree).

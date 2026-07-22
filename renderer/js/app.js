@@ -430,7 +430,17 @@
     });
     // NOTE: #composer / #send-btn are owned by chat.js (optimistic echo, busy
     // lock/stop-mode, autoresize). Binding them here too would double-send.
-    $('#boot-retry-btn').addEventListener('click', () => location.reload());
+    // Retry must actually relaunch the engine: a dead cli daemon does not come
+    // back from a plain reload (nothing re-launches it), so ask the backend to
+    // re-init first (no-op fast path for the direct engine), then reload.
+    $('#boot-retry-btn').addEventListener('click', async () => {
+      try {
+        await window.kimi?.bootstrapRetry?.();
+      } catch (err) {
+        console.warn('bootstrapRetry failed', err);
+      }
+      location.reload();
+    });
     // v2 chrome. Search palette (⌘F / #search-open-btn) is wired by R2's
     // search.js; model/swarm pill clicks are wired by R4's ChatOptions.init().
     $('#settings-btn')?.addEventListener('click', () => {

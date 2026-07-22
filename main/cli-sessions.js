@@ -44,8 +44,32 @@ async function writeJson(p, obj) {
   await fs.rename(tmp, p);
 }
 
-function toIso(ms) {
-  return typeof ms === 'number' && Number.isFinite(ms) && ms > 0 ? new Date(ms).toISOString() : null;
+// The CLI has written createdAt/updatedAt BOTH as ms numbers (older sessions)
+// and as ISO strings (0.28.x) — accept either, emit ISO strings.
+function toIso(value) {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+    return new Date(value).toISOString();
+  }
+  if (typeof value === 'string') {
+    const ms = Date.parse(value);
+    if (Number.isFinite(ms)) return new Date(ms).toISOString();
+  }
+  return null;
+}
+
+/** ms epoch of either on-disk date format (0 when missing/unparseable). */
+function toMs(value) {
+  const iso = toIso(value);
+  return iso ? Date.parse(iso) : 0;
+}
+
+/**
+ * Bump a timestamp while preserving the field's existing format: ISO-string
+ * fields stay ISO strings, numeric fields stay ms numbers. The CLI's own
+ * format changed across versions; a session must keep its original shape.
+ */
+function bumpedTime(existing, ms = Date.now()) {
+  return typeof existing === 'string' ? new Date(ms).toISOString() : ms;
 }
 
 // Lazy guarded require of the sibling direct-store (parallel-swarm module):
@@ -103,7 +127,7 @@ function summary(id, state) {
     busy: false,
     engine: 'cli',
     model: typeof state.model === 'string' && state.model ? state.model : null,
-    effort: null,
+    effort: typeof state.effort === 'string' && state.effort ? state.effort : null,
   };
 }
 
@@ -136,7 +160,7 @@ async function list() {
       found.push({
         id: d.name,
         state,
-        updatedAtMs: typeof state.updatedAt === 'number' && Number.isFinite(state.updatedAt) ? state.updatedAt : 0,
+        updatedAtMs: toMs(state.updatedAt),
       });
     }
   }
@@ -180,7 +204,7 @@ async function rename(id, title) {
   const state = found.state;
   state.title = String(title ?? '');
   state.isCustomTitle = true;
-  state.updatedAt = Date.now();
+  state.updatedAt = bumpedTime(state.updatedAt);
   await writeJson(path.join(found.dir, 'state.json'), state);
   return summary(id, state);
 }

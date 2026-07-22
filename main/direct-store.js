@@ -66,6 +66,15 @@ function toIso(ms) {
   return typeof ms === 'number' && Number.isFinite(ms) ? new Date(ms).toISOString() : '';
 }
 
+/**
+ * Bump state.updatedAt while preserving the field's existing format. Direct
+ * sessions store ms numbers, but this store also backs cli-sessions' shim
+ * (cross-engine continuation), where the CLI may keep ISO strings.
+ */
+function bumpedTime(existing, ms) {
+  return typeof existing === 'string' ? new Date(ms).toISOString() : ms;
+}
+
 // --- wire.jsonl replay (mirrors search.js numbering rules exactly) ----------
 //
 // Message slots: one per context.append_message (non-task), one per step.begin,
@@ -334,7 +343,7 @@ function createStore({ root }) {
     if (!state) throw new Error(`direct-store: no such session ${id}`);
     state.title = String(title ?? '');
     state.isCustomTitle = true;
-    state.updatedAt = Date.now();
+    state.updatedAt = bumpedTime(state.updatedAt, Date.now());
     await writeState(state);
     return summary(state);
   }
@@ -345,7 +354,7 @@ function createStore({ root }) {
     if (!state) throw new Error(`direct-store: no such session ${id}`);
     if (typeof patch.model === 'string') state.model = patch.model;
     if (typeof patch.effort === 'string') state.effort = patch.effort;
-    state.updatedAt = Date.now();
+    state.updatedAt = bumpedTime(state.updatedAt, Date.now());
     await writeState(state);
     return summary(state);
   }
@@ -507,7 +516,7 @@ function createStore({ root }) {
 
     state.turnCount = (state.turnCount || 0) + 1;
     state.lastPrompt = turn.prompt;
-    state.updatedAt = turn.endedAt || Date.now();
+    state.updatedAt = bumpedTime(state.updatedAt, turn.endedAt || Date.now());
     if (!state.isCustomTitle && !state.title) {
       const firstLine = String(turn.prompt).split('\n').find((l) => l.trim()) || '';
       state.title = firstLine.trim().slice(0, TITLE_MAX);

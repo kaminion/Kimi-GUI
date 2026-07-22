@@ -73,7 +73,19 @@ class KimiClient extends EventEmitter {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
-        err ? reject(err) : resolve(val);
+        if (err) {
+          // Never leak a half-started daemon: a child that fails the banner
+          // wait (timeout, spawn error, pre-banner exit) would otherwise keep
+          // booting and live on as an unmanaged orphan holding its port.
+          try {
+            child.kill('SIGKILL');
+          } catch {
+            /* already gone */
+          }
+          reject(err);
+        } else {
+          resolve(val);
+        }
       };
       const onData = (buf) => {
         const text = buf.toString();
@@ -477,7 +489,15 @@ class KimiClient extends EventEmitter {
     try { this.ws?.close(); } catch { /* ignore */ }
     this.ws = null;
     this.wsReady = false;
-    try { await this.request('POST', '/shutdown'); } catch { /* daemon may already be gone */ }
+    // POST /shutdown is a courtesy: it can hang while the daemon drains open
+    // connections (observed: shutdown accepted, daemon stays up). Bound it —
+    // the SIGTERM below is what reliably stops the daemon.
+    try {
+      await Promise.race([
+        this.request('POST', '/shutdown'),
+        new Promise((resolve) => setTimeout(resolve, 1500)),
+      ]);
+    } catch { /* daemon may already be gone */ }
     const child = this.child;
     if (child && !child.killed) {
       try { child.kill(); } catch { /* ignore */ }
