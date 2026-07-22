@@ -6,6 +6,10 @@
  *   일반     — language segment (한국어/English) + theme segment (시스템/다크/라이트)
  *   모델     — default model for NEW sessions (localStorage 'kimi.defaultModel');
  *             App applies it right after createSession via Settings.getDefaultModel()
+ *   엔진     — engine picker (v3): 내장 엔진(direct, 기본) vs Kimi Code CLI(에이전트
+ *             모드); switching asks to confirm, then setEngine + location.reload().
+ *             Under the CLI card: CLI install status + manual install button with
+ *             inline progress (onboarding phase:'install' push events).
  *   계정     — login status dot + re-login (same onboarding APIs as first-run)
  *             + 'Kimi Code Console 열기'
  *   업데이트 — app version, manual update check, live {type:'update'} push events
@@ -32,6 +36,8 @@
   let login = null;           // { pending, userCode?, verificationUrl? } while re-login runs
   let loginError = null;      // last re-login failure message
   let updateState = null;     // last known { status, version?, message? }
+  let engineInfo = null;      // cached getState() { engine, cliInstalled } for the 엔진 section
+  let cliInstall = null;      // { running, line } while onboardingInstallCli runs
 
   function el(tag, className, text) {
     const n = document.createElement(tag);
@@ -66,6 +72,7 @@
     return [
       { id: 'general', label: T('settings.section.general', '일반') },
       { id: 'model', label: T('settings.section.model', '모델') },
+      { id: 'engine', label: T('settings.section.engine', '엔진') },
       { id: 'account', label: T('settings.section.account', '계정') },
       { id: 'updates', label: T('settings.section.updates', '업데이트') },
       { id: 'info', label: T('settings.section.info', '정보') },
@@ -191,6 +198,166 @@
         ph.textContent = T('settings.model.load_failed', '모델 목록을 불러오지 못했습니다');
       }
     });
+  }
+
+  /* ---- section: 엔진 (v3 — 내장 엔진 direct vs Kimi Code CLI 에이전트 모드) ---- */
+
+  async function loadEngineInfo() {
+    if (typeof window.kimi?.getState !== 'function') return null;
+    try { engineInfo = await window.kimi.getState(); }
+    catch (err) { console.error('getState failed', err); engineInfo = null; }
+    return engineInfo;
+  }
+
+  /** Promise confirm dialog stacked above the settings modal (same .modal
+   * classes as the sidebar confirm; cancel is the default focus target). */
+  function confirmDialog({ title, body, confirmLabel }) {
+    return new Promise((resolve) => {
+      const root = document.getElementById('modal-root');
+      if (!root) { resolve(false); return; }
+      const backdrop = el('div', 'modal-backdrop');
+      const modal = el('div', 'modal modal-confirm');
+      modal.setAttribute('role', 'dialog');
+      modal.setAttribute('aria-modal', 'true');
+      if (title) modal.appendChild(el('div', 'modal-title', title));
+      modal.appendChild(el('div', 'modal-body', body));
+      const actions = el('div', 'modal-actions');
+      const cancelBtn = el('button', 'btn', T('common.cancel', '취소'));
+      cancelBtn.type = 'button';
+      const okBtn = el('button', 'btn btn-primary', confirmLabel);
+      okBtn.type = 'button';
+      actions.append(cancelBtn, okBtn);
+      modal.appendChild(actions);
+      backdrop.appendChild(modal);
+      let settled = false;
+      const done = (ok) => {
+        if (settled) return;
+        settled = true;
+        document.removeEventListener('keydown', onKey, true);
+        backdrop.remove();
+        resolve(ok);
+      };
+      const onKey = (e) => {
+        if (e.key === 'Escape') {
+          e.stopPropagation();
+          done(false);
+        }
+      };
+      document.addEventListener('keydown', onKey, true);
+      backdrop.addEventListener('mousedown', (e) => { if (e.target === backdrop) done(false); });
+      cancelBtn.addEventListener('click', () => done(false));
+      okBtn.addEventListener('click', () => done(true));
+      root.appendChild(backdrop);
+      cancelBtn.focus();
+    });
+  }
+
+  async function switchEngine(next) {
+    if (typeof window.kimi?.setEngine !== 'function') return;
+    const ok = await confirmDialog({
+      title: T('settings.engine.switch_title', '엔진 전환'),
+      body: T('settings.engine.switch_confirm', '전환하면 앱이 다시 시작됩니다'),
+      confirmLabel: T('settings.engine.switch_action', '전환 및 재시작'),
+    });
+    if (!ok) return;
+    try { await window.kimi.setEngine(next); }
+    catch (err) {
+      console.error('setEngine failed', err);
+      return;
+    }
+    location.reload(); // reload so the preload re-evaluates engine capabilities
+  }
+
+  function engineCard(id, titleKey, titleFb, descKey, descFb, current) {
+    const card = el('button', 'engine-card');
+    card.type = 'button';
+    card.classList.toggle('current', current);
+    card.setAttribute('aria-pressed', current ? 'true' : 'false');
+    const texts = el('div', 'engine-card-texts');
+    texts.appendChild(el('div', 'engine-card-title', T(titleKey, titleFb)));
+    texts.appendChild(el('div', 'engine-card-desc', T(descKey, descFb)));
+    card.appendChild(texts);
+    if (current) {
+      card.appendChild(el('span', 'engine-card-badge', T('settings.engine.current', '사용 중')));
+    } else {
+      card.addEventListener('click', () => void switchEngine(id));
+    }
+    return card;
+  }
+
+  function renderEngine(content) {
+    content.appendChild(el('h2', 'settings-section-title', T('settings.section.engine', '엔진')));
+    content.appendChild(el('p', 'settings-engine-desc',
+      T('settings.engine.desc', '대화를 처리할 엔진을 선택합니다.')));
+
+    const engine = engineInfo?.engine === 'cli' ? 'cli' : 'direct';
+    const cards = el('div', 'engine-cards');
+    cards.appendChild(engineCard(
+      'direct',
+      'settings.engine.direct.title', '내장 엔진',
+      'settings.engine.direct.desc', 'CLI 없이 바로 사용 — 기본',
+      engine === 'direct'
+    ));
+    cards.appendChild(engineCard(
+      'cli',
+      'settings.engine.cli.title', 'Kimi Code CLI',
+      'settings.engine.cli.desc', '에이전트 모드 — Swarm 등 고급 기능',
+      engine === 'cli'
+    ));
+    content.appendChild(cards);
+
+    // CLI install status (with path/version when known) + manual installer.
+    const cliInstalled = !!(engineInfo?.cliInstalled ?? onboardingState?.cliInstalled);
+    const statusText = cliInstalled
+      ? T('settings.engine.cli_installed', '설치됨') +
+        (onboardingState?.cliPath ? ` — ${onboardingState.cliPath}` : '') +
+        (onboardingState?.cliVersion ? ` (${onboardingState.cliVersion})` : '')
+      : T('settings.engine.cli_not_installed', '미설치');
+    content.appendChild(buildRow(
+      T('settings.engine.cli_status', 'CLI 상태'),
+      el('span', 'settings-value', statusText)
+    ));
+
+    if (cliInstall?.running) {
+      content.appendChild(el('p', 'engine-install-progress',
+        cliInstall.line || T('settings.engine.cli_installing', '설치 중…')));
+    } else {
+      const installBtn = el('button', 'btn', T('settings.engine.cli_install', 'CLI 설치'));
+      installBtn.type = 'button';
+      installBtn.disabled = typeof window.kimi?.onboardingInstallCli !== 'function';
+      installBtn.addEventListener('click', () => void installCli());
+      content.appendChild(installBtn);
+      if (cliInstall?.line) content.appendChild(el('p', 'engine-install-progress', cliInstall.line));
+    }
+
+    if (!engineInfo) void loadEngineInfo().then(() => { if (isOpen()) rerender(); });
+    if (!onboardingState) void loadOnboardingState().then(() => { if (isOpen()) rerender(); });
+  }
+
+  async function installCli() {
+    if (cliInstall?.running || typeof window.kimi?.onboardingInstallCli !== 'function') return;
+    cliInstall = { running: true, line: T('settings.engine.cli_installing', '설치 중…') };
+    rerender();
+    try {
+      await window.kimi.onboardingInstallCli();
+      cliInstall = null;
+      await Promise.all([loadOnboardingState(), loadEngineInfo()]);
+    } catch (err) {
+      console.error('onboardingInstallCli failed', err);
+      cliInstall = {
+        running: false,
+        line: err?.message || T('settings.engine.cli_install_failed', '설치에 실패했습니다'),
+      };
+    }
+    if (isOpen()) rerender();
+  }
+
+  function onInstallPush(msg) {
+    if (!cliInstall) return; // not our install run
+    cliInstall.line = msg.message || T('settings.engine.cli_installing', '설치 중…');
+    if (!isOpen()) return;
+    const line = backdropEl.querySelector('.engine-install-progress');
+    if (line) line.textContent = cliInstall.line;
   }
 
   /* ---- section: 계정 (login status / re-login / console) ---- */
@@ -450,6 +617,7 @@
     content.textContent = '';
     switch (activeSection) {
       case 'model': renderModel(content); break;
+      case 'engine': renderEngine(content); break;
       case 'account': renderAccount(content); break;
       case 'updates': renderUpdates(content); break;
       case 'info': renderInfo(content); break;
@@ -471,6 +639,7 @@
       if (!isOpen() || !msg || typeof msg !== 'object') return;
       if (msg.type === 'update') applyUpdateState(msg);
       else if (msg.type === 'onboarding' && msg.phase === 'login') onLoginPush(msg);
+      else if (msg.type === 'onboarding' && msg.phase === 'install') onInstallPush(msg);
     });
   }
 

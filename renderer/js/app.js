@@ -300,8 +300,9 @@
       el.style.color = '';
       return;
     }
-    const pct = Math.round((used / limit) * 100);
-    el.textContent = `${pct}%`;
+    const pct = (used / limit) * 100;
+    // Small conversations round to 0 — show "<1%" so the meter stays informative.
+    el.textContent = pct > 0 && pct < 1 ? '<1%' : `${Math.round(pct)}%`;
     // v3 tooltip pass (R2): first line explains the metric, second the numbers.
     el.title =
       T('chat.context_meter_title', '컨텍스트 사용량 — 모델에 전달 중인 대화 토큰 비율') +
@@ -380,7 +381,8 @@
         }
         break;
       case 'onboarding':
-        // CLI-install / login progress for the onboarding UI (R1).
+        // Login progress for the onboarding gate; CLI-install progress is
+        // consumed by the settings 엔진 section's own onEvent subscription.
         safeCall(() => window.Onboarding?.handleEvent?.(msg));
         break;
       case 'update':
@@ -461,10 +463,10 @@
 
   /**
    * Boot: nothing visual happens until the onboarding gate (R1) resolves.
-   * Onboarding.init(bootMain) plays the splash, routes through CLI install /
-   * login when needed, and calls bootMain once the app may proceed. Without
-   * the module (or if it fails) we hide the gate layers and boot directly
-   * (v1 behavior).
+   * Onboarding.init(bootMain) plays the splash, routes through the login
+   * gate when needed (v3: login only — no CLI install step), and calls
+   * bootMain once the app may proceed. Without the module (or if it fails)
+   * we hide the gate layers and boot directly (v1 behavior).
    */
   function boot() {
     wireChrome();
@@ -498,7 +500,8 @@
       return;
     }
     if (state?.needsOnboarding) {
-      // CLI missing or logged out: hand control back to the onboarding gate.
+      // Logged out (v3: needsOnboarding = !isLoggedIn, engine-independent):
+      // hand control back to the onboarding gate.
       if (typeof window.Onboarding?.show === 'function') {
         safeCall(() => window.Onboarding.show());
       } else if (typeof window.Onboarding?.init === 'function') {
