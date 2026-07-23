@@ -57,8 +57,10 @@ function createWindow() {
     },
   });
 
-  // End users get no DevTools: block its keyboard shortcuts (the default
-  // Electron menu's View > Toggle Developer Tools is removed in installAppMenu).
+  // End users get no DevTools: block its keyboard shortcuts (no app menu either).
+  // Editing/window shortcuts lost with the emptied macOS menu bar are re-bound
+  // in the renderer (app.js installShortcutFallbacks) — before-input-event is
+  // kept ONLY for the DevTools block.
   mainWindow.webContents.on('before-input-event', (event, input) => {
     if (input.type !== 'keyDown') return;
     const key = (input.key || '').toLowerCase();
@@ -115,31 +117,14 @@ if (!gotLock) {
     }
   });
 
-/** Minimal branded menu — replaces Electron's default (which exposes View > Toggle Developer Tools). */
+/** No OS menu bar on any platform. macOS cannot be fully menu-less (the
+ *  system always shows the app-name menu), so it gets an empty template —
+ *  only the Apple menu and the OS-injected app menu remain. Editing/window
+ *  shortcuts lost with the menu roles are re-bound in the before-input-event
+ *  handler above. win/linux: menu bar removed entirely. */
 function installAppMenu() {
-  if (isMac) {
-    Menu.setApplicationMenu(
-      Menu.buildFromTemplate([
-        {
-          label: 'kimi-gui',
-          submenu: [
-            { role: 'about', label: 'About kimi-gui' },
-            { type: 'separator' },
-            { role: 'hide' },
-            { role: 'hideOthers' },
-            { role: 'unhide' },
-            { type: 'separator' },
-            { role: 'quit', label: 'Quit kimi-gui' },
-          ],
-        },
-        { role: 'editMenu' },
-        { role: 'windowMenu' },
-      ])
-    );
-  } else {
-    // win/linux: the default menu bar exposes DevTools — drop it entirely.
-    Menu.setApplicationMenu(null);
-  }
+  if (isMac) Menu.setApplicationMenu(Menu.buildFromTemplate([]));
+  else Menu.setApplicationMenu(null);
 }
 
   app.whenReady().then(() => {

@@ -135,6 +135,15 @@ function registerIpc({ backend, getWindow, broadcast }) {
     return result.filePaths[0];
   });
 
+  // Window controls for the menu-less build (renderer re-binds Cmd+W/M/H).
+  handle('windowAction', (action) => {
+    const win = getWindow();
+    if (!win || win.isDestroyed()) return;
+    if (action === 'close') win.close();
+    else if (action === 'minimize') win.minimize();
+    else if (action === 'hide') app.hide?.();
+  });
+
   handle('getMessages', (sessionId) => backend.getMessages(sessionId));
 
   handle('getProfile', (sessionId) => backend.getProfile(sessionId));

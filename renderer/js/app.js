@@ -481,6 +481,49 @@
         App.showView('usage');
       }
     });
+    // Menu-less build: re-bind the shortcuts the macOS Edit/Window menu roles
+    // used to provide (select-all/copy/cut/paste/undo + close/minimize/hide).
+    // Cmd on mac, Ctrl elsewhere; never with Alt; never steals app shortcuts.
+    window.addEventListener('keydown', (e) => {
+      const mod = navigator.platform.startsWith('Mac') ? e.metaKey : e.ctrlKey;
+      if (!mod || e.altKey) return;
+      const key = e.key.toLowerCase();
+      const ae = document.activeElement;
+      const editable =
+        ae && (ae.tagName === 'TEXTAREA' || ae.tagName === 'INPUT' || ae.isContentEditable);
+      if (key === 'a' && editable) {
+        e.preventDefault();
+        ae.select();
+      } else if (key === 'c' || key === 'x') {
+        // Clipboard API, not execCommand — the latter needs transient
+        // activation, which is also why the native menu role was required.
+        const text = editable
+          ? ae.value.substring(ae.selectionStart, ae.selectionEnd)
+          : window.getSelection().toString();
+        if (!text) return;
+        e.preventDefault();
+        navigator.clipboard.writeText(text).catch(() => {});
+        if (key === 'x' && editable) {
+          ae.setRangeText('', ae.selectionStart, ae.selectionEnd, 'start');
+          ae.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+      } else if (key === 'v' && editable) {
+        e.preventDefault();
+        navigator.clipboard
+          .readText()
+          .then((text) => {
+            ae.setRangeText(text, ae.selectionStart, ae.selectionEnd, 'end');
+            ae.dispatchEvent(new Event('input', { bubbles: true }));
+          })
+          .catch(() => {});
+      } else if (key === 'z' && editable) {
+        e.preventDefault();
+        document.execCommand(e.shiftKey ? 'redo' : 'undo');
+      } else if (!e.shiftKey && (key === 'w' || key === 'm' || key === 'h')) {
+        e.preventDefault();
+        window.kimi?.windowAction?.({ w: 'close', m: 'minimize', h: 'hide' }[key]);
+      }
+    });
   }
 
   /* ---- boot ---- */

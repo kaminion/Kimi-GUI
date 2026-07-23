@@ -52,6 +52,8 @@ const api = {
   answerQuestion: (sessionId, tail, body) => invoke('answerQuestion', sessionId, tail, body),
   getQuota: () => invoke('getQuota'),
   openExternal: (url) => invoke('openExternal', url),
+  // Window controls for the menu-less build: 'close' | 'minimize' | 'hide'
+  windowAction: (action) => invoke('windowAction', action),
 
   // --- Onboarding ------------------------------------------------------------
   // { cliInstalled, cliPath, cliVersion, loggedIn, needsOnboarding }
