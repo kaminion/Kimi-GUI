@@ -200,12 +200,10 @@ function register({ ipcMain, send } = {}) {
     }),
   );
 
-  // One silent check shortly after launch (packaged only); further checks are
-  // manual via the settings UI. unref so the timer never keeps main alive.
-  const timer = setTimeout(() => {
-    runCheck(safeSend).catch(() => {});
-  }, 10_000);
-  if (typeof timer.unref === 'function') timer.unref();
+  // The renderer invokes kimi:updateCheck once after subscribing to push
+  // events. Starting here used to race slow engine/onboarding boots: the
+  // update-available event could fire before any renderer listener existed.
+  // Manual checks use the same handler and share checkInFlight.
 }
 
 module.exports = { register };

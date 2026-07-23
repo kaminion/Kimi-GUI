@@ -89,26 +89,6 @@ function createWindow() {
   mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
 }
 
-/**
- * Single silent update-check on launch, packaged builds only. The updater is
- * M3's module: ipc.js already calls its register({ipcMain, send}) when present
- * (which per contract performs the launch check); if it also exports
- * checkSilently({ send }) we call that instead — both paths are guarded so a
- * missing/broken module is a no-op, never a crash.
- */
-function maybeAutoCheckUpdates() {
-  if (!app.isPackaged) return;
-  try {
-    // eslint-disable-next-line global-require
-    const updater = require('./updater');
-    if (updater && typeof updater.checkSilently === 'function') {
-      updater.checkSilently({ send: broadcast });
-    }
-  } catch (err) {
-    console.warn(`[Kimi-GUI] silent update check skipped: ${err.message}`);
-  }
-}
-
 // --- App lifecycle -------------------------------------------------------
 
 const gotLock = app.requestSingleInstanceLock();
@@ -145,7 +125,6 @@ function installAppMenu() {
     backend
       .init({ app, send: broadcast })
       .catch((err) => console.error(`[Kimi-GUI] backend init failed: ${err.message}`));
-    maybeAutoCheckUpdates();
   });
 
   // Single-window utility: closing the window quits the app (and the backend).

@@ -15,6 +15,7 @@
   let updateReady = false;        // a downloaded update is waiting to install
   let updateVersion = null;       // version of the downloaded update
   let updateStatus = null;        // available | downloading | downloaded
+  let launchUpdateCheckStarted = false;
   let draftCwd = null;            // new-chat workspace chosen before first send
   let draftBranch = null;         // local branch chosen for the new chat
   let draftGitInfo = null;
@@ -652,6 +653,27 @@
     btn.title = T(titleKey[0], titleKey[1]) + (updateVersion ? ` (v${updateVersion})` : '');
   }
 
+  /**
+   * Start the one automatic check only after onEvent(handleEvent) is active.
+   * The returned snapshot is also dispatched so a custom updater that does
+   * not emit Electron events still reaches the prompt and settings indicator.
+   */
+  async function checkUpdatesOnLaunch() {
+    if (
+      launchUpdateCheckStarted ||
+      typeof window.kimi?.updateCheck !== 'function'
+    ) {
+      return;
+    }
+    launchUpdateCheckStarted = true;
+    try {
+      const result = await window.kimi.updateCheck();
+      if (result?.status) handleEvent({ type: 'update', ...result });
+    } catch (error) {
+      console.warn('automatic update check failed', error);
+    }
+  }
+
   /* ---- push-event dispatch (window.kimi.onEvent) ---- */
 
   function handleEvent(msg) {
@@ -900,6 +922,9 @@
     if (sorted.length) await App.selectSession(sorted[0].id);
     else App.startNewChat();
     safeCall(() => window.CliConnectPrompt?.show?.(state));
+    // Start after the optional CLI dialog has claimed #modal-root. If an
+    // update is available, UpdatePrompt queues behind that existing modal.
+    void checkUpdatesOnLaunch();
   }
 
   void boot();
