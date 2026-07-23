@@ -4,6 +4,7 @@
 (function () {
   const $ = (sel) => document.querySelector(sel);
   const T = (k, f) => (window.I18N?.t ? window.I18N.t(k, f) : f);
+  const intFmt = new Intl.NumberFormat('ko-KR');
   const LAST_CWD_KEY = 'kimi.lastCwd';
   const DEFAULT_MODEL_KEY = 'kimi.defaultModel';
   const DEFAULT_SWARM_KEY = 'kimi.defaultSwarm'; // v4 (R2): settings 스웜 기본값
@@ -341,6 +342,7 @@
     const limit = Number(usage?.context_limit ?? 0);
     if (!limit) {
       el.textContent = '';
+      el.removeAttribute('title');
       el.style.color = '';
       return;
     }
@@ -348,6 +350,13 @@
     // Small conversations round to 0 — show "<1%" so the meter stays informative.
     const pctText = pct > 0 && pct < 1 ? '<1%' : `${Math.round(pct)}%`;
     el.textContent = `${T('chat.context_label', '컨텍스트')} ${pctText}`;
+    // Tooltip: first line explains the metric, second the exact numbers.
+    el.title =
+      T('chat.context_meter_title', '컨텍스트 사용량 — 모델에 전달 중인 대화 토큰 비율') +
+      '\n' +
+      T('chat.context_title_pre', '컨텍스트 ') +
+      `${intFmt.format(used)} / ${intFmt.format(limit)}` +
+      T('common.tokens', ' 토큰');
     el.style.color = pct >= 80 ? 'var(--warn)' : '';
   }
 
@@ -356,6 +365,9 @@
     const dot = $('#server-status');
     dot.classList.toggle('ok', !!ready);
     dot.classList.toggle('err', !ready);
+    dot.title = ready
+      ? T('app.server_connected', '서버 연결됨')
+      : T('app.server_disconnected', '서버 연결 끊김') + (error ? `: ${error}` : '');
   }
 
   function scheduleRefreshSessions() {
@@ -373,6 +385,10 @@
     const btn = $('#settings-btn');
     if (!btn) return;
     btn.classList.toggle('has-update', updateReady);
+    btn.title = updateReady
+      ? T('update.ready_title', '업데이트 준비됨 — 설정에서 다시 시작하여 적용') +
+        (version ? ` (v${version})` : '')
+      : T('settings.open_title', '설정');
   }
 
   /* ---- push-event dispatch (window.kimi.onEvent) ---- */

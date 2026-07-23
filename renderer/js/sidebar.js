@@ -566,6 +566,7 @@
     item.setAttribute('role', 'button');
     item.tabIndex = 0;
     item.draggable = true; // v3: HTML5 drag & drop into custom groups
+    if (session.cwd) item.title = session.cwd; // full path; the meta line shows only the basename
 
     const title = document.createElement('div');
     title.className = 'session-title';
@@ -587,10 +588,12 @@
     const renameBtn = el('button', 'session-action session-rename');
     renameBtn.type = 'button';
     renameBtn.innerHTML = pencilSvg();
+    renameBtn.title = T('sidebar.rename_title', '이름 변경');
     renameBtn.setAttribute('aria-label', T('sidebar.rename_title', '이름 변경'));
     const deleteBtn = el('button', 'session-action session-delete');
     deleteBtn.type = 'button';
     deleteBtn.innerHTML = trashSvg();
+    deleteBtn.title = T('sidebar.delete_title', '삭제');
     deleteBtn.setAttribute('aria-label', T('sidebar.delete_title', '삭제'));
     actions.append(renameBtn, deleteBtn);
 
@@ -650,6 +653,7 @@
     header.setAttribute('role', 'button');
     header.tabIndex = 0;
     header.setAttribute('aria-expanded', String(!group.collapsed));
+    header.title = T('sidebar.group_toggle', '접기/펼치기');
 
     const chevron = document.createElement('span');
     chevron.className = 'session-group-chevron';
@@ -668,6 +672,7 @@
       });
     } else {
       const name = el('span', 'session-group-name custom-group-name', group.name);
+      name.title = group.name; // full name; the row truncates
       name.addEventListener('dblclick', (e) => {
         e.stopPropagation();
         editingGroupId = group.id;
@@ -679,6 +684,7 @@
     const count = el('span', 'session-group-count', String(itemCount));
     const del = el('button', 'custom-group-delete', '×');
     del.type = 'button';
+    del.title = T('sidebar.group_delete_title', '그룹 삭제');
     del.setAttribute('aria-label', T('sidebar.group_delete_title', '그룹 삭제'));
     del.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -706,6 +712,7 @@
     headerRow.appendChild(el('span', 'custom-groups-title', T('sidebar.groups_title', '그룹')));
     const addBtn = el('button', 'custom-group-add', '+');
     addBtn.type = 'button';
+    addBtn.title = T('sidebar.group_add_title', '새 그룹 만들기');
     addBtn.setAttribute('aria-label', T('sidebar.group_add_title', '새 그룹 만들기'));
     addBtn.addEventListener('click', (e) => {
       e.stopPropagation();

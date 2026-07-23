@@ -225,6 +225,7 @@
     const code = $('login-code');
     if (code) {
       code.textContent = userCode || '';
+      code.title = T('onboarding.copy_hint', '클릭하여 복사');
       code.setAttribute('role', 'button');
       code.tabIndex = 0;
     }

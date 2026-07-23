@@ -672,8 +672,13 @@
     sendBtn.disabled = readOnly || (!stop && !composerEl.value.trim());
     if (stop) {
       sendBtn.setAttribute('aria-label', T('chat.abort_title', '중단'));
+      sendBtn.title = T('chat.abort_title', '중단');
     } else {
       sendBtn.setAttribute('aria-label', T('chat.send_aria', '전송'));
+      // Read-only (foreign-engine) sessions explain why the button is inert.
+      sendBtn.title = readOnly
+        ? T('chat.foreign_readonly', '내장 엔진 세션은 열어보기만 가능합니다 · 엔진 전환 시 이어쓸 수 있습니다')
+        : T('chat.send_title', '전송 (↵)');
     }
   }
 
