@@ -26,6 +26,13 @@
  * classes), anchored to the pill and flipped above it when near the window
  * bottom — the composer sits at the bottom edge, so this is the common case.
  *
+ * #permission-select (v6) mirrors the effort pill exactly and renders in BOTH
+ * engines (unlike swarm). Per-session permission mode persisted in localStorage
+ * 'kimi.sessionPerm.<sid>'; selecting a mode calls setSessionPermission()
+ * optimistically and reverts on failure. Options depend on the engine:
+ * direct → 확인 후 실행(ask, default) / 자동 승인(auto); cli → 수동(manual,
+ * default) / 자동(auto) / YOLO(yolo). Dropdown items carry a short desc line.
+ *
  * All copy via T() ('options.*' keys, Korean fallback).
  */
 (function () {
@@ -36,17 +43,39 @@
   const LS_MODEL = 'kimi.sessionModel.'; // + sessionId -> model alias
   const LS_SWARM = 'kimi.sessionSwarm.'; // + sessionId -> '1' | '0'
   const LS_EFFORT = 'kimi.sessionEffort.'; // + sessionId -> 'off'|'low'|'high'|'max'
+  const LS_PERM = 'kimi.sessionPerm.'; // + sessionId -> direct 'ask'|'auto', cli 'manual'|'auto'|'yolo'
   const LS_DEFAULT_SWARM = 'kimi.defaultSwarm'; // v4: settings '스웜 기본값' -> '1' | '0'
 
   const EFFORT_LEVELS = ['off', 'low', 'high', 'max'];
   const DEFAULT_EFFORT = 'high';
   const EFFORT_FALLBACKS = { off: '끄기', low: '낮음', high: '높음', max: '최대' };
 
+  // Permission modes per engine (v6). Defaults match the backend: direct
+  // sessions ask per tool, cli sessions start in the daemon's manual mode.
+  const PERMISSION_MODES = {
+    direct: ['ask', 'auto'],
+    cli: ['manual', 'auto', 'yolo'],
+  };
+  const DEFAULT_PERMISSION = { direct: 'ask', cli: 'manual' };
+  const PERMISSION_FALLBACKS = {
+    ask: '확인 후 실행',
+    auto: '자동 승인',
+    manual: '수동',
+    yolo: 'YOLO',
+  };
+  const PERMISSION_DESC_FALLBACKS = {
+    ask: '도구 실행마다 확인합니다',
+    auto: '도구 실행을 자동 승인합니다',
+    manual: '도구 실행마다 확인합니다',
+    yolo: '승인 없이 전부 실행합니다',
+  };
+
   const $ = (sel) => document.querySelector(sel);
 
   let modelPill = null;   // #model-select
   let swarmBtn = null;    // #swarm-toggle
   let effortPill = null;  // #effort-select
+  let permPill = null;    // #permission-select
   let dropdown = null;    // open .model-dropdown element (null = closed)
   let dropdownOwner = null; // pill the open dropdown is anchored to
 
@@ -101,7 +130,7 @@
     }
   }
 
-  function dropdownItem(label, current, onSelect) {
+  function dropdownItem(label, current, onSelect, desc) {
     const item = document.createElement('button');
     item.type = 'button';
     item.className = 'model-dropdown-item';
@@ -112,6 +141,18 @@
     const text = document.createElement('span');
     text.className = 'model-dropdown-label';
     text.textContent = label;
+    if (desc) {
+      // Short desc line under the label (permission dropdown). Styled here to
+      // keep the change inside this file — no stylesheet edit needed.
+      const d = document.createElement('span');
+      d.className = 'model-dropdown-desc';
+      d.textContent = desc;
+      d.style.display = 'block';
+      d.style.fontSize = '11px';
+      d.style.opacity = '0.62';
+      d.style.marginTop = '1px';
+      text.appendChild(d);
+    }
     item.append(check, text);
     if (label === current) {
       item.classList.add('current');
@@ -331,6 +372,61 @@
     }
   }
 
+  /* ---- permission pill + dropdown (v6, both engines) ---- */
+
+  function permissionEngine() {
+    return window.App?.state?.engine === 'cli' ? 'cli' : 'direct';
+  }
+
+  function permissionModes() {
+    return PERMISSION_MODES[permissionEngine()];
+  }
+
+  function currentPermission(sid) {
+    const stored = sid ? lsGet(LS_PERM + sid) : null;
+    const modes = permissionModes();
+    return modes.includes(stored) ? stored : DEFAULT_PERMISSION[permissionEngine()];
+  }
+
+  function permissionLabel(mode) {
+    return T(`options.permission.${mode}`, PERMISSION_FALLBACKS[mode] || mode);
+  }
+
+  function permissionDesc(mode) {
+    return T(`options.permission.${mode}_desc`, PERMISSION_DESC_FALLBACKS[mode] || '');
+  }
+
+  function updatePermissionPill(sid) {
+    if (!permPill || permPill.hidden) return;
+    permPill.textContent = permissionLabel(currentPermission(sid));
+    permPill.title = T('options.permission.title', '권한 — 도구 실행 승인 방식');
+  }
+
+  function fillPermissionDropdown(box) {
+    const current = permissionLabel(currentPermission(activeSessionId()));
+    for (const mode of permissionModes()) {
+      box.appendChild(
+        dropdownItem(permissionLabel(mode), current, () => selectPermission(mode), permissionDesc(mode))
+      );
+    }
+  }
+
+  async function selectPermission(mode) {
+    const sid = activeSessionId();
+    closeDropdown();
+    if (!sid) return; // draft chat: nothing to persist against
+    const prev = currentPermission(sid);
+    lsSet(LS_PERM + sid, mode); // optimistic
+    updatePermissionPill(sid);
+    try {
+      await window.kimi.setSessionPermission(sid, mode);
+    } catch (err) {
+      console.error('setSessionPermission failed', err);
+      lsSet(LS_PERM + sid, prev); // revert
+      updatePermissionPill(sid);
+    }
+  }
+
   /* ---- public API ---- */
 
   /** Wire option pills. Idempotent; safe to call again after DOM changes. */
@@ -338,6 +434,7 @@
     modelPill = $('#model-select');
     swarmBtn = $('#swarm-toggle');
     effortPill = $('#effort-select');
+    permPill = $('#permission-select');
     if (modelPill) {
       if (typeof window.kimi?.listModels !== 'function') {
         modelPill.hidden = true;
@@ -379,6 +476,21 @@
         effortPill.hidden = false; // API appeared after an earlier init
       }
     }
+    if (permPill) {
+      // v6: visible in BOTH engines — the preload advertises
+      // setSessionPermission for direct (ask|auto) and cli (manual|auto|yolo).
+      if (typeof window.kimi?.setSessionPermission !== 'function') {
+        permPill.hidden = true; // preload too old: hidden
+      } else if (!permPill.dataset.chatOptionsWired) {
+        permPill.hidden = false;
+        permPill.dataset.chatOptionsWired = '1';
+        permPill.addEventListener('click', () =>
+          toggleDropdownFor(permPill, fillPermissionDropdown)
+        );
+      } else {
+        permPill.hidden = false; // API appeared after an earlier init
+      }
+    }
     refresh(activeSessionId());
   }
 
@@ -388,6 +500,7 @@
     if (modelPill && !modelPill.hidden) updateModelPill(sid);
     if (swarmBtn && !swarmBtn.hidden) updateSwarm(sid);
     if (effortPill && !effortPill.hidden) updateEffortPill(sid);
+    if (permPill && !permPill.hidden) updatePermissionPill(sid);
   }
 
   // Language change: re-apply translated pill labels/tooltips in place.

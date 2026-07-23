@@ -151,5 +151,10 @@ if (exposes('setSessionEffort')) {
   // Thinking effort per session: 'off' | 'low' | 'high' | 'max'.
   api.setSessionEffort = (sessionId, effort) => invoke('setSessionEffort', sessionId, effort);
 }
+if (exposes('setSessionPermission')) {
+  // Permission mode per session (both engines): direct 'ask' | 'auto',
+  // cli 'manual' | 'auto' | 'yolo'.
+  api.setSessionPermission = (sessionId, mode) => invoke('setSessionPermission', sessionId, mode);
+}
 
 contextBridge.exposeInMainWorld('kimi', api);

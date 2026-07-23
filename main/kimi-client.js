@@ -234,6 +234,17 @@ class KimiClient extends EventEmitter {
   }
 
   /**
+   * Set the session's permission mode (verified live on 0.28.1: POST /profile
+   * {agent_config:{permission_mode:'manual'|'yolo'|'auto'}} — GET /status then
+   * reports permission; invalid values are rejected with code 40001).
+   */
+  setSessionPermission(id, mode) {
+    return this.request('POST', `/sessions/${encodeURIComponent(id)}/profile`, {
+      agent_config: { permission_mode: String(mode) },
+    });
+  }
+
+  /**
    * Soft-delete a session (v3; verified live: POST :archive {} ->
    * {archived:true}; the session list filter already hides archived entries).
    */

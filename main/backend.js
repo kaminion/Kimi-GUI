@@ -72,6 +72,12 @@ const DIRECT_MODELS = [
 const DEFAULT_DIRECT_MODEL = 'k3';
 const DIRECT_EFFORTS = new Set(['off', 'low', 'high', 'max']);
 const DEFAULT_DIRECT_EFFORT = 'high';
+// Per-session permission mode: direct engine stores 'ask'|'auto' (a state.json
+// flag consulted by the turn runner's requireApproval hook); the cli engine
+// accepts the daemon enum 'manual'|'yolo'|'auto' (profile permission_mode).
+const DIRECT_PERMISSIONS = new Set(['ask', 'auto']);
+const CLI_PERMISSIONS = new Set(['manual', 'yolo', 'auto']);
+const DEFAULT_DIRECT_PERMISSION = 'ask';
 
 const BUSY_ERROR = '이전 응답이 아직 생성 중입니다. 잠시 후 다시 시도해 주세요.';
 // V5: sending to a direct-store session while the cli engine is active.
@@ -704,6 +710,9 @@ function capabilities() {
       setSessionSwarm: currentEngine === 'cli',
       // Verified live: cli accepts agent_config.thinking; direct stores a flag.
       setSessionEffort: true,
+      // Both engines: cli POSTs profile agent_config.permission_mode
+      // (manual|yolo|auto); direct stores an ask|auto flag.
+      setSessionPermission: true,
       renameSession: true,
       deleteSession: true,
     },
@@ -724,6 +733,7 @@ function normalizeCliSession(s) {
     usage: s.usage ?? null,
     model: s.agent_config?.model || null,
     effort: s.agent_config?.thinking || null,
+    permission: s.agent_config?.permission_mode || null,
     engine: 'cli',
   };
 }
@@ -840,6 +850,7 @@ async function listSessions() {
       usage: s.usage ?? null,
       model: s.model ?? null,
       effort: s.effort ?? null,
+      permission: s.permission ?? null,
       engine: 'direct',
     }));
   // V4 (M1): legacy CLI sessions merge into the same list — dedupe by id
@@ -861,6 +872,7 @@ async function listSessions() {
           usage: null,
           model: s.model ?? null,
           effort: s.effort ?? null,
+          permission: s.permission ?? null,
           engine: 'cli',
         }));
     } catch (err) {
@@ -959,7 +971,11 @@ async function synthesizeProfile(store, sessionId) {
     busy: activeTurns.has(sessionId),
     archived: false,
     metadata: { cwd: s.cwd ?? '' },
-    agent_config: { model, thinking: s.effort || DEFAULT_DIRECT_EFFORT },
+    agent_config: {
+      model,
+      thinking: s.effort || DEFAULT_DIRECT_EFFORT,
+      permission: s.permission || DEFAULT_DIRECT_PERMISSION,
+    },
     usage: {
       input_tokens: totals.input,
       output_tokens: totals.output,
@@ -1019,22 +1035,39 @@ function pushDirectUsage(sessionId, raw, contextLimit) {
 }
 
 function requestDirectApproval(sessionId, turn, tool) {
-  const approvalId = `appr_${randomUUID()}`;
   const t = tool && typeof tool === 'object' ? tool : {};
   const toolName = t.name ?? t.tool_name ?? 'tool';
-  return new Promise((resolve) => {
-    turn.approvals.set(approvalId, resolve);
-    emitSession(sessionId, {
-      type: 'approval.requested',
-      approval_id: approvalId,
-      session_id: sessionId,
-      tool_call_id: t.id ?? t.tool_call_id ?? approvalId,
-      tool_name: toolName,
-      action: t.action ?? toolName,
-      tool_input_display: t.input ?? t.args ?? null,
-      created_at: new Date().toISOString(),
+  // Per-session permission flag: 'auto' skips the modal entirely — resolve
+  // 'approved' WITHOUT pushing approval.requested (logged for transparency).
+  // The flag is re-read live so a mid-turn pill change applies immediately.
+  return Promise.resolve()
+    .then(async () => {
+      let permission = turn.permission;
+      try {
+        const live = turn.store ? await Promise.resolve(turn.store.get(sessionId)) : null;
+        if (live && typeof live.permission === 'string') permission = live.permission;
+      } catch {
+        /* keep the snapshot */
+      }
+      if (permission === 'auto') {
+        console.log(`[backend] permission=auto — auto-approved ${toolName} (${sessionId})`);
+        return 'approved';
+      }
+      const approvalId = `appr_${randomUUID()}`;
+      return new Promise((resolve) => {
+        turn.approvals.set(approvalId, resolve);
+        emitSession(sessionId, {
+          type: 'approval.requested',
+          approval_id: approvalId,
+          session_id: sessionId,
+          tool_call_id: t.id ?? t.tool_call_id ?? approvalId,
+          tool_name: toolName,
+          action: t.action ?? toolName,
+          tool_input_display: t.input ?? t.args ?? null,
+          created_at: new Date().toISOString(),
+        });
+      });
     });
-  });
 }
 
 async function directSendPrompt(sessionId, text) {
@@ -1069,6 +1102,10 @@ async function directSendPrompt(sessionId, text) {
     contextLimit: modelContextLimit(session),
     approvals: new Map(),
     steerQueue: new DirectSteerQueue({ signal: controller.signal }),
+    // Permission flag snapshot for requireApproval ('ask' | 'auto'); the hook
+    // also re-reads the store live so mid-turn pill changes take effect.
+    store,
+    permission: session.permission === 'auto' ? 'auto' : DEFAULT_DIRECT_PERMISSION,
   };
   activeTurns.set(sessionId, turn);
 
@@ -1427,6 +1464,27 @@ async function setSessionEffort(sessionId, effort) {
   return { ok: true };
 }
 
+/**
+ * Per-session permission mode. cli engine: daemon enum 'manual'|'yolo'|'auto'
+ * (verified live: POST /profile {agent_config:{permission_mode}} — GET /status
+ * reflects it as permission). direct engine: 'ask'|'auto' flag in state.json,
+ * consulted by the turn runner's requireApproval hook ('auto' auto-approves
+ * every tool without pushing approval.requested).
+ */
+async function setSessionPermission(sessionId, mode) {
+  const value = String(mode ?? '');
+  if (currentEngine === 'cli') {
+    if (!CLI_PERMISSIONS.has(value)) throw new Error(`unknown permission mode: ${value}`);
+    return requireCli().setSessionPermission(sessionId, value);
+  }
+  if (!DIRECT_PERMISSIONS.has(value)) throw new Error(`unknown permission mode: ${value}`);
+  // Same shim-store path as setSessionModel/setSessionEffort.
+  const resolved = await resolveDirectSessionStore(sessionId);
+  if (!resolved) throw new Error(`session not found: ${sessionId}`);
+  await patchDirectSession(resolved.store, sessionId, { permission: value });
+  return { ok: true };
+}
+
 async function renameSession(sessionId, title) {
   const clean = String(title ?? '').trim();
   if (!clean) throw new Error('title must not be empty');
@@ -1541,6 +1599,7 @@ module.exports = {
   setSessionModel,
   setSessionSwarm,
   setSessionEffort,
+  setSessionPermission,
   renameSession,
   deleteSession,
   listTasks,

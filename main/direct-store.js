@@ -348,12 +348,13 @@ function createStore({ root }) {
     return summary(state);
   }
 
-  /** Store per-session config flags (model / effort). */
+  /** Store per-session config flags (model / effort / permission). */
   async function setConfig(id, patch = {}) {
     const state = await readState(id);
     if (!state) throw new Error(`direct-store: no such session ${id}`);
     if (typeof patch.model === 'string') state.model = patch.model;
     if (typeof patch.effort === 'string') state.effort = patch.effort;
+    if (typeof patch.permission === 'string') state.permission = patch.permission;
     state.updatedAt = bumpedTime(state.updatedAt, Date.now());
     await writeState(state);
     return summary(state);

@@ -294,6 +294,8 @@ function registerIpc({ backend, getWindow, broadcast }) {
 
   handle('setSessionEffort', (sessionId, effort) => backend.setSessionEffort(sessionId, effort));
 
+  handle('setSessionPermission', (sessionId, mode) => backend.setSessionPermission(sessionId, mode));
+
   handle('renameSession', (sessionId, title) => backend.renameSession(sessionId, title));
 
   handle('deleteSession', (sessionId) => backend.deleteSession(sessionId));
