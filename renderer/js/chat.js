@@ -94,7 +94,7 @@
     'background.task.started', 'background.task.terminated',
     'cron.fired', 'hook.result', 'goal.updated',
     'skill.activated', 'plugin_command.activated',
-    'prompt.submitted', 'prompt.steered',
+    'prompt.submitted',
     'approval.requested', 'approval.resolved', 'approval.expired',
     'question.requested', 'question.answered', 'question.dismissed',
     'config.changed', 'model_catalog.changed',
@@ -1390,10 +1390,11 @@
       const steerIndex = optimisticSteers.findIndex((item) => item.text === textOfMessage(m));
       if (steerIndex >= 0) {
         messages.push(m);
-        const [{ el: row }] = optimisticSteers.splice(steerIndex, 1);
-        row.classList.remove('msg-optimistic', 'msg-steer');
-        row.dataset.messageId = m.id;
-        fillMessage(row, m, collectResults(), busy);
+        const pending = optimisticSteers[steerIndex];
+        pending.message = m;
+        pending.messageId = m.id;
+        pending.el.dataset.messageId = m.id;
+        if (pending.status === 'sent') finalizeOptimisticSteer(pending, m);
         maybeScroll();
         return;
       }
@@ -1478,6 +1479,15 @@
       case 'turn.started': onTurnStarted(data); break;
       case 'tool.call.started': onToolStarted(data); break;
       case 'tool.result': onToolResult(data); break;
+      case 'prompt.steer_sending':
+        setOptimisticSteersSending(promptIdsOf(data));
+        break;
+      case 'prompt.steered':
+        setOptimisticSteersSent(promptIdsOf(data));
+        break;
+      case 'prompt.steer_failed':
+        setOptimisticSteersFailed(promptIdsOf(data));
+        break;
       case 'session.status_changed':
         setBusyFromStatus(data.status);
         // Status flip often accompanies the final message.updated; nothing else to do.
@@ -1594,21 +1604,353 @@
   function appendOptimisticSteer(text) {
     clearEmptyState();
     const row = el('div', 'msg-row msg-user msg-steer msg-optimistic');
-    row.append(
-      el('span', 'msg-steer-label', T('chat.steer_label', '작업 조정')),
-      el('div', 'msg-user-text', text),
+    const header = el('div', 'msg-steer-header');
+    const label = el(
+      'span',
+      'msg-steer-label',
+      T('chat.steer_pending', '대기 중인 작업 조정')
     );
+    const actions = el('div', 'msg-steer-actions');
+    const editButton = el('button', 'msg-steer-action', T('chat.steer_edit', '편집'));
+    editButton.type = 'button';
+    editButton.disabled = true;
+    editButton.setAttribute('aria-label', T('chat.steer_edit_aria', '대기 중인 작업 조정 편집'));
+    const deleteButton = el(
+      'button',
+      'msg-steer-action danger',
+      T('chat.steer_delete', '삭제')
+    );
+    deleteButton.type = 'button';
+    deleteButton.disabled = true;
+    deleteButton.setAttribute('aria-label', T('chat.steer_delete_aria', '대기 중인 작업 조정 삭제'));
+    actions.append(editButton, deleteButton);
+    header.append(label, actions);
+
+    const textNode = el('div', 'msg-user-text', text);
+    const editor = el('div', 'msg-steer-editor');
+    editor.hidden = true;
+    const textarea = document.createElement('textarea');
+    textarea.className = 'msg-steer-editor-input';
+    textarea.rows = 2;
+    textarea.setAttribute(
+      'aria-label',
+      T('chat.steer_edit_aria', '대기 중인 작업 조정 편집')
+    );
+    textarea.setAttribute(
+      'placeholder',
+      T('chat.steer_edit_placeholder', '조정할 내용을 입력하세요…')
+    );
+    const editorActions = el('div', 'msg-steer-editor-actions');
+    const cancelButton = el('button', 'msg-steer-editor-button', T('common.cancel', '취소'));
+    cancelButton.type = 'button';
+    const saveButton = el(
+      'button',
+      'msg-steer-editor-button primary',
+      T('chat.steer_save', '저장')
+    );
+    saveButton.type = 'button';
+    editorActions.append(cancelButton, saveButton);
+    editor.append(textarea, editorActions);
+    row.append(header, textNode, editor);
     transcriptEl.append(row);
-    const pending = { text, el: row };
+    const pending = {
+      text,
+      el: row,
+      label,
+      actions,
+      editButton,
+      deleteButton,
+      textNode,
+      editor,
+      textarea,
+      cancelButton,
+      saveButton,
+      promptId: null,
+      sessionId: activeSessionId,
+      messageId: null,
+      message: null,
+      status: 'submitting',
+    };
     optimisticSteers.push(pending);
+    editButton.addEventListener('click', () => { void openOptimisticSteerEditor(pending); });
+    deleteButton.addEventListener('click', () => { void deleteOptimisticSteer(pending); });
+    cancelButton.addEventListener('click', () => { void cancelOptimisticSteerEditor(pending); });
+    saveButton.addEventListener('click', () => { void saveOptimisticSteer(pending); });
+    textarea.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        void cancelOptimisticSteerEditor(pending);
+      } else if (event.key === 'Enter' && (event.metaKey || event.ctrlKey) && !event.isComposing) {
+        event.preventDefault();
+        void saveOptimisticSteer(pending);
+      }
+    });
     scrollToBottom();
     return pending;
   }
 
-  function rejectOptimisticSteer(pending) {
+  function promptIdsOf(data) {
+    const ids = [];
+    const one = data?.prompt_id ?? data?.promptId;
+    if (one) ids.push(String(one));
+    const many = data?.prompt_ids ?? data?.promptIds;
+    if (Array.isArray(many)) {
+      for (const id of many) if (id != null) ids.push(String(id));
+    }
+    return [...new Set(ids)];
+  }
+
+  function pendingSteerByPromptId(promptId) {
+    return optimisticSteers.find((item) => item.promptId === promptId) ?? null;
+  }
+
+  function setOptimisticSteerState(pending, status, labelText) {
+    if (!pending || !optimisticSteers.includes(pending)) return;
+    pending.status = status;
+    pending.label.textContent = labelText;
+    pending.label.classList.toggle('error', status === 'error');
+    const editable = status === 'queued' || status === 'error';
+    pending.actions.hidden = !editable;
+    pending.editButton.disabled = !editable;
+    pending.deleteButton.disabled = !editable;
+  }
+
+  function finishOptimisticSteerSubmission(pending, result) {
+    if (!pending || !optimisticSteers.includes(pending)) return;
+    if (!result || typeof result !== 'object') {
+      rejectOptimisticSteer(pending);
+      return;
+    }
+    pending.promptId = result.prompt_id ?? result.promptId ?? null;
+    if (result.status === 'queued' && pending.promptId) {
+      setOptimisticSteerState(
+        pending,
+        'queued',
+        T('chat.steer_pending', '대기 중인 작업 조정')
+      );
+    } else {
+      markOptimisticSteerSent(pending);
+    }
+  }
+
+  function finalizeOptimisticSteer(pending, message) {
     const index = optimisticSteers.indexOf(pending);
     if (index >= 0) optimisticSteers.splice(index, 1);
+    pending.el.classList.remove('msg-optimistic', 'msg-steer');
+    pending.el.dataset.messageId = message.id;
+    fillMessage(pending.el, message, collectResults(), busy);
+  }
+
+  function markOptimisticSteerSent(pending) {
+    if (!pending || !optimisticSteers.includes(pending)) return;
+    setOptimisticSteerState(
+      pending,
+      'sent',
+      T('chat.steer_sent', '작업 조정 전달됨')
+    );
+    pending.editor.hidden = true;
+    pending.textNode.hidden = false;
+    if (pending.message) finalizeOptimisticSteer(pending, pending.message);
+  }
+
+  function setOptimisticSteersSending(promptIds) {
+    for (const promptId of promptIds) {
+      const pending = pendingSteerByPromptId(promptId);
+      if (!pending) continue;
+      setOptimisticSteerState(
+        pending,
+        'sending',
+        T('chat.steer_sending', '작업 조정 전달 중…')
+      );
+      pending.saveButton.disabled = true;
+      pending.cancelButton.disabled = true;
+    }
+  }
+
+  function setOptimisticSteersSent(promptIds) {
+    for (const promptId of promptIds) markOptimisticSteerSent(pendingSteerByPromptId(promptId));
+  }
+
+  function setOptimisticSteersFailed(promptIds) {
+    for (const promptId of promptIds) {
+      const pending = pendingSteerByPromptId(promptId);
+      if (!pending) continue;
+      pending.saveButton.disabled = false;
+      pending.cancelButton.disabled = false;
+      pending.editor.hidden = true;
+      pending.textNode.hidden = false;
+      setOptimisticSteerState(
+        pending,
+        'error',
+        T('chat.steer_still_queued', '전달하지 못했습니다. 아직 대기 중입니다.')
+      );
+    }
+  }
+
+  async function openOptimisticSteerEditor(pending) {
+    if (!pending?.promptId || !['queued', 'error'].includes(pending.status)) return;
+    const app = window.App;
+    if (typeof app?.holdSteer !== 'function') return;
+    setOptimisticSteerState(
+      pending,
+      'holding',
+      T('chat.steer_edit_opening', '편집 준비 중…')
+    );
+    const held = await app.holdSteer(pending.promptId);
+    if (!held || !optimisticSteers.includes(pending) || pending.status === 'sent') {
+      if (optimisticSteers.includes(pending)) {
+        setOptimisticSteerState(
+          pending,
+          'error',
+          T('chat.steer_edit_failed', '대기 메시지를 편집할 수 없습니다.')
+        );
+      }
+      return;
+    }
+    pending.status = 'editing';
+    pending.label.classList.remove('error');
+    pending.label.textContent = T('chat.steer_editing', '작업 조정 편집 중');
+    pending.actions.hidden = true;
+    pending.textNode.hidden = true;
+    pending.editor.hidden = false;
+    pending.textarea.value = pending.text;
+    pending.saveButton.disabled = false;
+    pending.cancelButton.disabled = false;
+    requestAnimationFrame(() => {
+      pending.textarea.focus();
+      pending.textarea.setSelectionRange(pending.textarea.value.length, pending.textarea.value.length);
+    });
+  }
+
+  function detachPendingSteerMessage(pending) {
+    if (pending.messageId) {
+      messages = messages.filter((message) => message.id !== pending.messageId);
+    }
+    pending.messageId = null;
+    pending.message = null;
+    pending.el.removeAttribute('data-message-id');
+  }
+
+  async function saveOptimisticSteer(pending) {
+    if (pending?.status !== 'editing') return;
+    const value = pending.textarea.value.trim();
+    if (!value) {
+      pending.label.textContent = T('chat.steer_empty', '내용을 입력해 주세요.');
+      pending.label.classList.add('error');
+      pending.textarea.focus();
+      return;
+    }
+    const app = window.App;
+    if (typeof app?.updateSteer !== 'function') return;
+    pending.status = 'updating';
+    pending.label.classList.remove('error');
+    pending.label.textContent = T('chat.steer_updating', '작업 조정 저장 중…');
+    pending.saveButton.disabled = true;
+    pending.cancelButton.disabled = true;
+    const result = await app.updateSteer(pending.promptId, value);
+    if (!result || !optimisticSteers.includes(pending)) {
+      if (optimisticSteers.includes(pending)) {
+        pending.status = 'editing';
+        pending.label.classList.add('error');
+        pending.label.textContent = T('chat.steer_edit_failed', '대기 메시지를 편집할 수 없습니다.');
+        pending.saveButton.disabled = false;
+        pending.cancelButton.disabled = false;
+      }
+      return;
+    }
+    detachPendingSteerMessage(pending);
+    pending.text = value;
+    pending.textNode.textContent = value;
+    pending.promptId = result.prompt_id ?? result.promptId ?? pending.promptId;
+    pending.editor.hidden = true;
+    pending.textNode.hidden = false;
+    if (result.status === 'queued') {
+      setOptimisticSteerState(
+        pending,
+        'queued',
+        T('chat.steer_pending', '대기 중인 작업 조정')
+      );
+    } else {
+      markOptimisticSteerSent(pending);
+    }
+  }
+
+  async function cancelOptimisticSteerEditor(pending) {
+    if (pending?.status !== 'editing') return;
+    const app = window.App;
+    if (typeof app?.resumeSteer !== 'function') return;
+    pending.status = 'resuming';
+    pending.label.textContent = T('chat.steer_resuming', '대기열로 돌아가는 중…');
+    pending.saveButton.disabled = true;
+    pending.cancelButton.disabled = true;
+    const resumed = await app.resumeSteer(pending.promptId);
+    if (!resumed || !optimisticSteers.includes(pending)) {
+      if (optimisticSteers.includes(pending)) {
+        pending.status = 'editing';
+        pending.label.classList.add('error');
+        pending.label.textContent = T('chat.steer_resume_failed', '편집을 닫을 수 없습니다.');
+        pending.saveButton.disabled = false;
+        pending.cancelButton.disabled = false;
+      }
+      return;
+    }
+    pending.editor.hidden = true;
+    pending.textNode.hidden = false;
+    setOptimisticSteerState(
+      pending,
+      'queued',
+      T('chat.steer_pending', '대기 중인 작업 조정')
+    );
+  }
+
+  function removeOptimisticSteer(pending) {
+    const index = optimisticSteers.indexOf(pending);
+    if (index >= 0) optimisticSteers.splice(index, 1);
+    if (pending?.messageId) messages = messages.filter((message) => message.id !== pending.messageId);
     pending?.el?.remove();
+  }
+
+  function releaseHeldOptimisticSteers() {
+    if (typeof window.kimi?.resumeSteer !== 'function') return;
+    for (const pending of optimisticSteers) {
+      if (
+        pending.status !== 'editing' ||
+        !pending.promptId ||
+        !pending.sessionId
+      ) {
+        continue;
+      }
+      window.kimi
+        .resumeSteer(pending.sessionId, pending.promptId)
+        .catch(() => { /* engine shutdown or prompt already consumed */ });
+    }
+  }
+
+  async function deleteOptimisticSteer(pending) {
+    if (!pending?.promptId || !['queued', 'error'].includes(pending.status)) return;
+    const app = window.App;
+    if (typeof app?.deleteSteer !== 'function') return;
+    setOptimisticSteerState(
+      pending,
+      'deleting',
+      T('chat.steer_deleting', '작업 조정 삭제 중…')
+    );
+    const result = await app.deleteSteer(pending.promptId);
+    if (result && optimisticSteers.includes(pending)) {
+      removeOptimisticSteer(pending);
+      return;
+    }
+    if (optimisticSteers.includes(pending)) {
+      setOptimisticSteerState(
+        pending,
+        'error',
+        T('chat.steer_delete_failed', '대기 메시지를 삭제하지 못했습니다.')
+      );
+    }
+  }
+
+  function rejectOptimisticSteer(pending) {
+    removeOptimisticSteer(pending);
     appendSystemNote(T('chat.steer_failed', '작업 조정 요청을 전송하지 못했습니다. 다시 시도해 주세요.'));
   }
 
@@ -1634,9 +1976,7 @@
       const pending = appendOptimisticSteer(text);
       Promise.resolve()
         .then(() => app.steer(text))
-        .then((ok) => {
-          if (ok === false) rejectOptimisticSteer(pending);
-        })
+        .then((result) => finishOptimisticSteerSubmission(pending, result))
         .catch(() => rejectOptimisticSteer(pending));
       return;
     }
@@ -1711,6 +2051,7 @@
   function renderMessages(list, sessionId) {
     if (!initialized) init();
     if (!initialized) return;
+    releaseHeldOptimisticSteers();
     if (sessionId !== undefined) activeSessionId = sessionId;
     if (reloadTimer) { clearTimeout(reloadTimer); reloadTimer = null; }
     optimisticUser = null;
@@ -1743,6 +2084,7 @@
   }
 
   function reset() {
+    releaseHeldOptimisticSteers();
     messages = [];
     streamNodes.clear();
     liveStreams.clear();
@@ -1795,5 +2137,23 @@
     transcriptEl.querySelectorAll('.msg-process').forEach((box) => {
       updateProcessAction(box, box.querySelector('.msg-process-action'));
     });
+    for (const pending of optimisticSteers) {
+      pending.editButton.textContent = T('chat.steer_edit', '편집');
+      pending.editButton.setAttribute('aria-label', T('chat.steer_edit_aria', '대기 중인 작업 조정 편집'));
+      pending.deleteButton.textContent = T('chat.steer_delete', '삭제');
+      pending.deleteButton.setAttribute('aria-label', T('chat.steer_delete_aria', '대기 중인 작업 조정 삭제'));
+      pending.cancelButton.textContent = T('common.cancel', '취소');
+      pending.saveButton.textContent = T('chat.steer_save', '저장');
+      pending.textarea.setAttribute('placeholder', T('chat.steer_edit_placeholder', '조정할 내용을 입력하세요…'));
+      if (pending.status === 'queued') {
+        pending.label.textContent = T('chat.steer_pending', '대기 중인 작업 조정');
+      } else if (pending.status === 'editing') {
+        pending.label.textContent = T('chat.steer_editing', '작업 조정 편집 중');
+      } else if (pending.status === 'sending') {
+        pending.label.textContent = T('chat.steer_sending', '작업 조정 전달 중…');
+      } else if (pending.status === 'sent') {
+        pending.label.textContent = T('chat.steer_sent', '작업 조정 전달됨');
+      }
+    }
   });
 })();

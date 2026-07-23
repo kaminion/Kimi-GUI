@@ -181,6 +181,18 @@ function registerIpc({ backend, getWindow, broadcast }) {
 
   handle('steer', (sessionId, text) => backend.steer(sessionId, text));
 
+  handle('holdSteer', (sessionId, promptId) =>
+    backend.holdSteer(sessionId, promptId));
+
+  handle('resumeSteer', (sessionId, promptId) =>
+    backend.resumeSteer(sessionId, promptId));
+
+  handle('updateSteer', (sessionId, promptId, text) =>
+    backend.updateSteer(sessionId, promptId, text));
+
+  handle('deleteSteer', (sessionId, promptId) =>
+    backend.deleteSteer(sessionId, promptId));
+
   handle('abort', (sessionId) => backend.abort(sessionId));
 
   handle('respondApproval', (sessionId, approvalId, decision) =>

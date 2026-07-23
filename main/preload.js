@@ -48,6 +48,11 @@ const api = {
   getProfile: (sessionId) => invoke('getProfile', sessionId),
   sendPrompt: (sessionId, text) => invoke('sendPrompt', sessionId, text),
   steer: (sessionId, text) => invoke('steer', sessionId, text),
+  holdSteer: (sessionId, promptId) => invoke('holdSteer', sessionId, promptId),
+  resumeSteer: (sessionId, promptId) => invoke('resumeSteer', sessionId, promptId),
+  updateSteer: (sessionId, promptId, text) =>
+    invoke('updateSteer', sessionId, promptId, text),
+  deleteSteer: (sessionId, promptId) => invoke('deleteSteer', sessionId, promptId),
   abort: (sessionId) => invoke('abort', sessionId),
   // decision: 'approve' | 'reject'
   respondApproval: (sessionId, approvalId, decision) =>

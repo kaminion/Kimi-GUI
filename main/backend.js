@@ -72,6 +72,7 @@ const DIRECT_EFFORTS = new Set(['off', 'low', 'high', 'max']);
 const DEFAULT_DIRECT_EFFORT = 'high';
 
 const BUSY_ERROR = '이전 응답이 아직 생성 중입니다. 잠시 후 다시 시도해 주세요.';
+const STEER_EDIT_WINDOW_MS = 4000;
 // V5: sending to a direct-store session while the cli engine is active.
 const DIRECT_SESSION_REJECT =
   '이 내장 엔진 세션은 설정에서 내장 엔진으로 전환해야 이어갈 수 있습니다.';
@@ -359,6 +360,8 @@ async function shutdown() {
       try { resolve('rejected'); } catch { /* settled */ }
     }
     turn.approvals.clear();
+    turn.steers = [];
+    wakeDirectSteer(turn);
     try { turn.controller.abort(); } catch { /* ignore */ }
     activeTurns.delete(sessionId);
   }
@@ -1039,6 +1042,7 @@ async function directSendPrompt(sessionId, text) {
     contextLimit: modelContextLimit(session),
     approvals: new Map(),
     steers: [],
+    steerWake: null,
   };
   activeTurns.set(sessionId, turn);
 
@@ -1075,7 +1079,7 @@ async function directSendPrompt(sessionId, text) {
       });
     },
     requireApproval: (tool) => requestDirectApproval(sessionId, turn, tool),
-    takeSteers: () => turn.steers.splice(0).map((item) => item.text),
+    takeSteers: () => takeReadyDirectSteers(sessionId, turn).map((item) => item.text),
     onUsage: (usage) => pushDirectUsage(sessionId, usage, turn.contextLimit),
   };
 
@@ -1099,9 +1103,24 @@ async function directSendPrompt(sessionId, text) {
         // A steer can arrive after direct-client's final boundary check while
         // it is persisting the turn. Drain that narrow race as a continuation
         // without dropping the session's busy state.
-        const late = turn.steers.splice(0);
-        if (!late.length) break;
-        prompt = late.map((item) => item.text).join('\n\n');
+        let continuation = '';
+        while (turn.steers.length && !controller.signal.aborted) {
+          const deliverable = turn.steers.filter((item) => !item.held);
+          const nextReadyAt = deliverable.length
+            ? Math.min(...deliverable.map((item) => item.editableUntil))
+            : Infinity;
+          const waitMs = Number.isFinite(nextReadyAt)
+            ? Math.max(0, nextReadyAt - Date.now())
+            : 60000;
+          if (waitMs > 0) await waitForDirectSteerChange(turn, waitMs);
+          const ready = takeReadyDirectSteers(sessionId, turn);
+          if (ready.length) {
+            continuation = ready.map((item) => item.text).join('\n\n');
+            break;
+          }
+        }
+        if (!continuation) break;
+        prompt = continuation;
       }
       if (controller.signal.aborted) reason = 'aborted';
     } catch (err) {
@@ -1116,6 +1135,7 @@ async function directSendPrompt(sessionId, text) {
         try { resolve('rejected'); } catch { /* already settled */ }
       }
       turn.approvals.clear();
+      wakeDirectSteer(turn);
       activeTurns.delete(sessionId);
       emitSession(sessionId, { type: 'turn.ended', turn_id: turnId, reason });
       emitSession(sessionId, {
@@ -1128,6 +1148,49 @@ async function directSendPrompt(sessionId, text) {
   })();
 
   return { prompt_id: `prompt_${randomUUID()}`, turn_id: turnId, status: 'started' };
+}
+
+function wakeDirectSteer(turn) {
+  if (typeof turn?.steerWake !== 'function') return;
+  const wake = turn.steerWake;
+  turn.steerWake = null;
+  wake();
+}
+
+function waitForDirectSteerChange(turn, waitMs) {
+  return new Promise((resolve) => {
+    let timer = null;
+    const signal = turn.controller.signal;
+    const done = () => {
+      if (timer) clearTimeout(timer);
+      signal.removeEventListener('abort', done);
+      if (turn.steerWake === done) turn.steerWake = null;
+      resolve();
+    };
+    timer = setTimeout(done, waitMs);
+    turn.steerWake = done;
+    if (signal.aborted) done();
+    else signal.addEventListener('abort', done, { once: true });
+  });
+}
+
+function takeReadyDirectSteers(sessionId, turn) {
+  const now = Date.now();
+  const ready = [];
+  const waiting = [];
+  for (const item of turn.steers) {
+    if (!item.held && item.editableUntil <= now) ready.push(item);
+    else waiting.push(item);
+  }
+  turn.steers = waiting;
+  for (const item of ready) {
+    emitSession(sessionId, {
+      type: 'prompt.steered',
+      prompt_id: item.id,
+      prompt_ids: [item.id],
+    });
+  }
+  return ready;
 }
 
 // ---------------------------------------------------------------------------
@@ -1166,11 +1229,92 @@ async function steer(sessionId, text) {
     const value = String(text ?? '').trim();
     if (!value) throw new Error('스티어 텍스트가 비어 있습니다.');
     const promptId = `prompt_${randomUUID()}`;
-    turn.steers.push({ id: promptId, text: value, createdAt: Date.now() });
-    emitSession(sessionId, { type: 'prompt.steered', prompt_id: promptId });
-    return { prompt_id: promptId, turn_id: turn.turnId, status: 'steered' };
+    const createdAt = Date.now();
+    turn.steers.push({
+      id: promptId,
+      text: value,
+      createdAt,
+      editableUntil: createdAt + STEER_EDIT_WINDOW_MS,
+      held: false,
+    });
+    wakeDirectSteer(turn);
+    return {
+      prompt_id: promptId,
+      turn_id: turn.turnId,
+      status: 'queued',
+      editable_until: createdAt + STEER_EDIT_WINDOW_MS,
+    };
   }
   return directSendPrompt(sessionId, text);
+}
+
+async function holdSteer(sessionId, promptId) {
+  if (currentEngine === 'cli') {
+    await rejectIfDirectSession(sessionId);
+    return requireCli().holdSteer(sessionId, promptId);
+  }
+  const turn = activeTurns.get(sessionId);
+  const item = turn?.steers.find((candidate) => candidate.id === promptId);
+  if (!turn || !item) throw new Error('대기 중인 작업 조정을 찾을 수 없습니다.');
+  item.held = true;
+  item.editableUntil = Infinity;
+  wakeDirectSteer(turn);
+  return { prompt_id: promptId, status: 'held' };
+}
+
+async function resumeSteer(sessionId, promptId) {
+  if (currentEngine === 'cli') {
+    await rejectIfDirectSession(sessionId);
+    return requireCli().resumeSteer(sessionId, promptId);
+  }
+  const turn = activeTurns.get(sessionId);
+  const item = turn?.steers.find((candidate) => candidate.id === promptId);
+  if (!turn || !item) throw new Error('대기 중인 작업 조정을 찾을 수 없습니다.');
+  item.held = false;
+  item.editableUntil = Date.now() + STEER_EDIT_WINDOW_MS;
+  wakeDirectSteer(turn);
+  return {
+    prompt_id: promptId,
+    status: 'queued',
+    editable_until: item.editableUntil,
+  };
+}
+
+async function updateSteer(sessionId, promptId, text) {
+  if (currentEngine === 'cli') {
+    await rejectIfDirectSession(sessionId);
+    return requireCli().updateSteer(sessionId, promptId, text);
+  }
+  const value = String(text ?? '').trim();
+  if (!value) throw new Error('스티어 텍스트가 비어 있습니다.');
+  const turn = activeTurns.get(sessionId);
+  const item = turn?.steers.find((candidate) => candidate.id === promptId);
+  if (!turn || !item) throw new Error('대기 중인 작업 조정을 찾을 수 없습니다.');
+  item.text = value;
+  item.held = false;
+  item.editableUntil = Date.now() + STEER_EDIT_WINDOW_MS;
+  wakeDirectSteer(turn);
+  return {
+    prompt_id: item.id,
+    replaced_prompt_id: item.id,
+    turn_id: turn.turnId,
+    status: 'queued',
+    editable_until: item.editableUntil,
+  };
+}
+
+async function deleteSteer(sessionId, promptId) {
+  if (currentEngine === 'cli') {
+    await rejectIfDirectSession(sessionId);
+    return requireCli().deleteSteer(sessionId, promptId);
+  }
+  const turn = activeTurns.get(sessionId);
+  if (!turn) throw new Error('대기 중인 작업 조정을 찾을 수 없습니다.');
+  const index = turn.steers.findIndex((candidate) => candidate.id === promptId);
+  if (index < 0) throw new Error('대기 중인 작업 조정을 찾을 수 없습니다.');
+  turn.steers.splice(index, 1);
+  wakeDirectSteer(turn);
+  return { deleted: true, prompt_id: promptId };
 }
 
 /** Interrupt a direct-engine turn (no-op when idle); true when one was active. */
@@ -1181,6 +1325,8 @@ function abortDirectTurn(sessionId) {
     try { resolve('rejected'); } catch { /* already settled */ }
   }
   turn.approvals.clear();
+  turn.steers = [];
+  wakeDirectSteer(turn);
   try { turn.controller.abort(); } catch { /* ignore */ }
   return true;
 }
@@ -1405,6 +1551,10 @@ module.exports = {
   getProfile,
   sendPrompt,
   steer,
+  holdSteer,
+  resumeSteer,
+  updateSteer,
+  deleteSteer,
   abort,
   respondApproval,
   answerQuestion,

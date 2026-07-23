@@ -194,11 +194,67 @@
         return false;
       }
       try {
-        await window.kimi.steer(id, text);
+        const result = await window.kimi.steer(id, text);
         scheduleRefreshSessions();
-        return true;
+        return result;
       } catch (err) {
         console.error('steer failed', err);
+        return false;
+      }
+    },
+
+    /** Pause delivery while the queued adjustment editor is open. */
+    async holdSteer(promptId) {
+      const id = App.state.activeId;
+      if (!promptId || !id || typeof window.kimi?.holdSteer !== 'function') return false;
+      try {
+        return await window.kimi.holdSteer(id, promptId);
+      } catch (err) {
+        console.error('holdSteer failed', err);
+        return false;
+      }
+    },
+
+    /** Resume delivery when queued adjustment editing is cancelled. */
+    async resumeSteer(promptId) {
+      const id = App.state.activeId;
+      if (!promptId || !id || typeof window.kimi?.resumeSteer !== 'function') return false;
+      try {
+        return await window.kimi.resumeSteer(id, promptId);
+      } catch (err) {
+        console.error('resumeSteer failed', err);
+        return false;
+      }
+    },
+
+    /** Replace a steering message while it is still waiting for delivery. */
+    async updateSteer(promptId, text) {
+      text = String(text ?? '').trim();
+      const id = App.state.activeId;
+      if (
+        !text ||
+        !promptId ||
+        !id ||
+        typeof window.kimi?.updateSteer !== 'function'
+      ) {
+        return false;
+      }
+      try {
+        return await window.kimi.updateSteer(id, promptId, text);
+      } catch (err) {
+        console.error('updateSteer failed', err);
+        return false;
+      }
+    },
+
+    /** Remove a steering message before the active turn consumes it. */
+    async deleteSteer(promptId) {
+      const id = App.state.activeId;
+      if (!promptId || !id || typeof window.kimi?.deleteSteer !== 'function') return false;
+      try {
+        return await window.kimi.deleteSteer(id, promptId);
+      } catch (err) {
+        console.error('deleteSteer failed', err);
         return false;
       }
     },
