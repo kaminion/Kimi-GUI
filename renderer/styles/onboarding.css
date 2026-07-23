@@ -56,7 +56,17 @@
   will-change: opacity, transform;
 }
 
-/* Logo fades + scales in (600ms); the wordmark follows 100ms later. */
+#splash-status {
+  margin-top: -10px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: rgba(245, 245, 247, 0.56);
+  opacity: 0;
+  transform: translateY(5px);
+  will-change: opacity, transform;
+}
+
+/* Logo fades + scales in (600ms); the wordmark and status follow. */
 #splash.on #splash-logo {
   opacity: 1;
   transform: scale(1);
@@ -69,11 +79,43 @@
   transition: opacity 0.5s var(--onboarding-ease) 0.1s, transform 0.5s var(--onboarding-ease) 0.1s;
 }
 
-/* Exit: whole layer slides down 24px while fading (350ms). */
+#splash.on #splash-status {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 0.4s var(--onboarding-ease) 0.22s,
+    transform 0.4s var(--onboarding-ease) 0.22s;
+}
+
+/*
+ * The prompt cursor keeps blinking until the first conversation is ready.
+ * This is a predetermined CSS opacity animation, so it stays responsive while
+ * the renderer is parsing a large transcript.
+ */
+#splash.on:not(.out) .splash-mark-cursor {
+  animation: splash-cursor-idle 0.84s linear 0.6s infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+@keyframes splash-cursor-idle {
+  0%,
+  42%,
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  50%,
+  88% {
+    opacity: 0.28;
+    transform: translateY(2px);
+  }
+}
+
+/* Exit quickly once real content is ready. */
 #splash.out {
   opacity: 0;
-  transform: translateY(24px);
-  transition: opacity 0.35s var(--onboarding-ease), transform 0.35s var(--onboarding-ease);
+  transform: translateY(12px);
+  transition: opacity 0.24s var(--onboarding-ease), transform 0.24s var(--onboarding-ease);
 }
 
 /* ---- Onboarding overlay + card ---- */
@@ -314,6 +356,8 @@
   #splash,
   #splash-logo,
   #splash-word,
+  #splash-status,
+  .splash-mark-cursor,
   #onboarding-card,
   #onboarding-progress .progress-bar > div {
     transition: none !important;

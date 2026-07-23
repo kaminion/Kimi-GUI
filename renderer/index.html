@@ -22,8 +22,14 @@
 </head>
 <body>
   <div id="titlebar"></div>
-  <!-- Splash gate (plays on every launch; R1 owns its lifecycle). -->
-  <div id="splash"><div id="splash-logo"></div><div id="splash-word">Kimi-GUI</div></div>
+  <!-- Splash gate stays mounted until the first conversation is ready. Its
+       CSS-only idle animation remains smooth while session history loads. -->
+  <div id="splash" role="status" aria-live="polite" aria-label="Loading Kimi-GUI"
+       data-i18n-aria="app.loading_aria">
+    <div id="splash-logo"></div>
+    <div id="splash-word">Kimi-GUI</div>
+    <div id="splash-status" data-i18n="app.loading_workspace">Preparing your workspace…</div>
+  </div>
   <!-- Onboarding (v3: login gate only — the app works without the CLI). -->
   <div id="onboarding" hidden>
     <div id="onboarding-card">

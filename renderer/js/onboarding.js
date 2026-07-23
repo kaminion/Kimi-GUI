@@ -34,11 +34,11 @@
 
   const T = (k, f) => (window.I18N?.t ? window.I18N.t(k, f) : f);
 
-  // Splash timing (ms): logo fade/scale-in 600 (word +100/500), hold 300,
-  // slide-down + fade-out 350. Easing lives in onboarding.css.
+  // Splash timing (ms): enter once, then keep the prompt cursor alive until
+  // the app has loaded its first transcript. Easing lives in onboarding.css.
   const SPLASH_ANIM_MS = 600;
-  const SPLASH_HOLD_MS = 300;
-  const SPLASH_OUT_MS = 350;
+  const SPLASH_MIN_MS = 700;
+  const SPLASH_OUT_MS = 240;
   const CHECK_MS = 600; // login-success checkmark draw
 
   const $ = (id) => document.getElementById(id);
@@ -52,6 +52,7 @@
   let flashTimer = null;      // login-status "copied" flash timer
   let buttonsWired = false;
   let lastStepUI = null;      // thunk re-rendering the current step (language change)
+  let splashStartedAt = 0;
 
   /* ---- tiny plumbing ------------------------------------------------------- */
 
@@ -80,8 +81,8 @@
   function logoSvg(size) {
     return (
       `<svg width="${size}" height="${size}" viewBox="0 0 1024 1024" aria-hidden="true" focusable="false">` +
-      '<path d="M376 352 L552 512 L376 672" fill="none" stroke="currentColor" stroke-width="88" stroke-linecap="round" stroke-linejoin="round"/>' +
-      '<rect x="608" y="612" width="128" height="80" rx="16" fill="#0a84ff"/>' +
+      '<path class="splash-mark-chevron" d="M376 352 L552 512 L376 672" fill="none" stroke="currentColor" stroke-width="88" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '<rect class="splash-mark-cursor" x="608" y="612" width="128" height="80" rx="16" fill="#0a84ff"/>' +
       '</svg>'
     );
   }
@@ -102,17 +103,29 @@
 
   /* ---- splash (every launch) ----------------------------------------------- */
 
-  async function playSplash() {
+  async function startSplash() {
     const splash = $('splash');
     if (!splash || splash.hidden) return;
+    splashStartedAt = Date.now();
     const logo = $('splash-logo');
     if (logo && !logo.firstChild) logo.innerHTML = logoSvg(72);
     const word = $('splash-word');
     if (word && !word.textContent.trim()) word.textContent = 'Kimi-GUI';
-    if (reducedMotion()) { splash.hidden = true; return; } // instant swap
     void splash.offsetWidth; // commit initial styles so the transitions run
     splash.classList.add('on');
-    await wait(SPLASH_ANIM_MS + SPLASH_HOLD_MS);
+    if (!reducedMotion()) await wait(SPLASH_ANIM_MS);
+  }
+
+  async function hideSplash() {
+    const splash = $('splash');
+    if (!splash || splash.hidden) return;
+    const remaining = SPLASH_MIN_MS - (Date.now() - splashStartedAt);
+    if (!reducedMotion() && remaining > 0) await wait(remaining);
+    if (reducedMotion()) {
+      splash.hidden = true;
+      splash.classList.remove('on', 'out');
+      return;
+    }
     splash.classList.add('out');
     await wait(SPLASH_OUT_MS);
     splash.hidden = true;
@@ -363,10 +376,14 @@
     }
     unsubEvents = null;
     const root = $('onboarding');
-    if (root) root.hidden = true;
     const fn = launchAppFn;
     launchAppFn = null;
     if (fn) await fn();
+    // Keep either the splash or the completed login card above the shell until
+    // the first session and transcript are ready. This prevents a blank app
+    // frame on slow disks or large histories.
+    if (root) root.hidden = true;
+    await hideSplash();
   }
 
   async function init(launchApp) {
@@ -374,13 +391,14 @@
     started = true;
     launchAppFn = typeof launchApp === 'function' ? launchApp : null;
     const statePromise = getOnboardingState(); // fetch in parallel with the splash
-    await playSplash();
+    await startSplash();
     const state = await statePromise;
     // v3 gate: login only. Defensive for both gate shapes — v3 main returns
     // { needsOnboarding } (= "not logged in"); a v2 main could still attach
     // { cliInstalled, loggedIn }, but a logged-in user is never gated now
     // (the CLI is optional), so the login card is the only step left.
     if (!state || !state.needsOnboarding || state.loggedIn === true) { await finish(); return; }
+    await hideSplash();
     if (!showOnboarding()) { await finish(); return; } // contract DOM missing
     await runLoginStep();
     await finish();

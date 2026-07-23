@@ -223,10 +223,33 @@ instead of being buried inside the generic tool log.
   failed mutations are excluded and in-progress tools are layered in until the
   authoritative history resync arrives.
 
+## Initial loading states (v0.6.4)
+
+The app never exposes an uninitialized conversation shell while session data is
+being read:
+
+- The launch splash enters once and remains above the shell until the newest
+  session's transcript is rendered. Its prompt cursor repeats with a
+  CSS-only opacity/transform animation, so it keeps moving even while a large
+  local history is parsed.
+- Session listing renders a five-row skeleton when the splash or onboarding
+  layer is unavailable. The structure mirrors the final two-line session rows.
+- Conversation switches keep the existing transcript dimmed for 120ms. Warm
+  reads replace it directly; slower reads transition to three message-shaped
+  skeleton rows. This avoids both blank content and skeleton flashes.
+- Transcript history and profile usage are requested concurrently. The
+  conversation becomes interactive as soon as history arrives; usage metadata
+  fills in independently.
+- Loading containers expose `role="status"`, `aria-busy`, and localized labels.
+  Failures replace the skeleton with an inline `role="alert"` state.
+- Repeating motion changes only `opacity` and `transform`. Under
+  `prefers-reduced-motion`, the splash stays static and skeleton pulses are
+  disabled.
+
 ## Motion (v3) — applied emil-design-eng / review-animations rules
 
-Source: `github.com/emilkowalski/skills` (cloned to `/tmp/emil-skills`),
-skills `emil-design-eng` (philosophy + decision framework) and
+Source: `github.com/emilkowalski/skills`, skills `emil-design-eng`
+(philosophy + decision framework) and
 `review-animations` (ten non-negotiable standards + STANDARDS.md values).
 Rules applied to `base/layout/components.css`:
 
@@ -248,9 +271,9 @@ Rules applied to `base/layout/components.css`:
    `:active` with a 160ms ease-out transition. The 26px ghost pills keep
    their instant background swap instead (pressed tens of times a day —
    reduced-motion category).
-6. **Spinners/pulses are constant motion and stay as-is** — `tool-spin`
-   (linear), `busy-pulse` (symmetric breathing, opacity+scale), both
-   GPU-only properties.
+6. **Spinners/pulses communicate active state** — `tool-spin` (linear),
+   `busy-pulse` (symmetric breathing, opacity+scale), the launch cursor, and
+   loading skeletons use compositor-friendly properties only.
 7. **`prefers-reduced-motion`** still collapses all animation via the
    base.css media query.
 

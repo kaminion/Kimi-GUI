@@ -748,6 +748,32 @@
 
   /* ---- render ---- */
 
+  function renderLoading() {
+    const nav = document.getElementById('session-list');
+    if (!nav) return;
+    nav.textContent = '';
+    nav.setAttribute('aria-busy', 'true');
+
+    const wrap = el('div', 'session-list-loading');
+    wrap.setAttribute('role', 'status');
+    wrap.setAttribute(
+      'aria-label',
+      T('sidebar.loading', '대화 목록을 불러오는 중…'),
+    );
+    wrap.append(el('span', 'session-list-skeleton-heading'));
+
+    for (let index = 0; index < 5; index += 1) {
+      const item = el('div', 'session-list-skeleton-item');
+      item.style.animationDelay = `${index * 80}ms`;
+      item.append(
+        el('span', `session-list-skeleton-line title line-${(index % 3) + 1}`),
+        el('span', `session-list-skeleton-line meta line-${((index + 1) % 3) + 1}`),
+      );
+      wrap.append(item);
+    }
+    nav.append(wrap);
+  }
+
   /**
    * Render the session list: custom groups first (assigned sessions leave
    * the recent section), then ONE '최근 내역' section with every unassigned
@@ -757,6 +783,7 @@
   function render(state) {
     const nav = document.getElementById('session-list');
     if (!nav) return;
+    nav.removeAttribute('aria-busy');
     if (dragSessionId) {
       // A re-render destroys the drag source, so dragend never fires; reset
       // the drag chrome here or body.dnd-active / the zone would stick.
@@ -791,5 +818,5 @@
     if (window.App?.state) render(window.App.state);
   });
 
-  window.Sidebar = { render };
+  window.Sidebar = { render, renderLoading };
 })();

@@ -21,6 +21,7 @@
   let draftGitInfo = null;
   let draftInfoRequest = 0;
   let branchInfoRequest = 0;
+  let sessionSelectionRequest = 0;
 
   const App = {
     state: {
@@ -86,6 +87,7 @@
 
     /** Select a session: highlight it, load its transcript and context meter. */
     async selectSession(id) {
+      const requestId = ++sessionSelectionRequest;
       App.state.activeId = id;
       App.showView('chat');
       window.Sidebar?.render?.(App.state);
@@ -95,20 +97,28 @@
       syncComposerForSession(session);
       refreshChatOptions(id);
       notifyPanelSession(id);
+      window.Chat?.beginLoading?.(id);
+
+      // Profile data is independent from transcript history. Fetch both at
+      // once, but let the conversation become usable as soon as its messages
+      // arrive instead of keeping the launch splash up for the slower request.
+      void window.kimi.getProfile(id).then((profile) => {
+        if (App.state.activeId !== id || requestId !== sessionSelectionRequest) return;
+        updateContextMeter(profile?.usage);
+      }).catch((err) => {
+        console.error('getProfile failed', err);
+      });
+
       try {
         const messages = await window.kimi.getMessages(id);
-        if (App.state.activeId !== id) return; // user switched meanwhile
+        if (App.state.activeId !== id || requestId !== sessionSelectionRequest) return;
         // Pass the id: chat.js filters WS events by its activeSessionId.
         window.Chat?.renderMessages?.(messages, id);
       } catch (err) {
         console.error('getMessages failed', err);
-      }
-      try {
-        const profile = await window.kimi.getProfile(id);
-        if (App.state.activeId !== id) return;
-        updateContextMeter(profile?.usage);
-      } catch (err) {
-        console.error('getProfile failed', err);
+        if (App.state.activeId === id && requestId === sessionSelectionRequest) {
+          window.Chat?.renderLoadError?.(id, err);
+        }
       }
     },
 
@@ -120,6 +130,7 @@
 
     /** Enter draft mode: no active session; one is created lazily on first send. */
     startNewChat() {
+      sessionSelectionRequest += 1;
       App.state.activeId = null;
       App.showView('chat');
       window.Sidebar?.render?.(App.state);
@@ -907,6 +918,7 @@
     setServerStatus(true);
     initChatOptionsOnce();
     if (!unsubscribeEvents) unsubscribeEvents = window.kimi.onEvent(handleEvent);
+    window.Sidebar?.renderLoading?.();
     try {
       App.state.sessions = await window.kimi.listSessions();
     } catch (err) {

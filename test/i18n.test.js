@@ -42,3 +42,17 @@ test('change-count copy provides singular and plural forms in both languages', (
   assert.equal(i18n.t('changes.file_changed'), '파일 1개 변경됨');
   assert.equal(i18n.t('changes.files_changed').replace('N', '2'), '파일 2개 변경됨');
 });
+
+test('launch and conversation loading states are localized', () => {
+  const i18n = loadI18n();
+
+  i18n.lang = 'en';
+  assert.equal(i18n.t('app.loading_workspace'), 'Preparing your workspace…');
+  assert.equal(i18n.t('chat.loading_history'), 'Loading conversation history…');
+  assert.equal(i18n.t('sidebar.loading'), 'Loading conversations…');
+
+  i18n.lang = 'ko';
+  assert.equal(i18n.t('app.loading_workspace'), '작업 공간을 준비하는 중…');
+  assert.equal(i18n.t('chat.loading_history'), '대화 기록을 불러오는 중…');
+  assert.equal(i18n.t('sidebar.loading'), '대화 목록을 불러오는 중…');
+});

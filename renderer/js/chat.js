@@ -70,6 +70,7 @@
   const CHANGE_ROWS_MAX = 260;   // keep large file writes responsive in the transcript
   const RELOAD_DEBOUNCE_MS = 300;
   const HIGHLIGHT_FLASH_MS = 1200;  // keep in sync with search-highlight-flash in search.css
+  const HISTORY_LOADING_DELAY_MS = 120; // avoid flashing a skeleton for warm reads
 
   const T = (k, f) => (window.I18N?.t ? window.I18N.t(k, f) : f);
 
@@ -122,6 +123,8 @@
   let pinned = true;
   let reloadTimer = null;
   let highlightTimer = null;        // pending removal of a .search-highlight flash
+  let historyLoadingTimer = null;
+  let historyLoadingSessionId = null;
 
   // ---- small helpers -------------------------------------------------------
   function el(tag, className, text) {
@@ -1167,9 +1170,108 @@
     transcriptEl.append(wrap);
   }
 
+  function clearHistoryLoading() {
+    if (historyLoadingTimer) {
+      clearTimeout(historyLoadingTimer);
+      historyLoadingTimer = null;
+    }
+    historyLoadingSessionId = null;
+    transcriptEl?.classList.remove('is-load-pending');
+    transcriptEl?.removeAttribute('aria-busy');
+  }
+
+  function skeletonLine(widthClass) {
+    return el('span', `transcript-skeleton-line ${widthClass}`);
+  }
+
+  function renderHistorySkeleton(sessionId) {
+    if (!transcriptEl || historyLoadingSessionId !== sessionId) return;
+    historyLoadingTimer = null;
+    activeSessionId = sessionId;
+    messages = [];
+    streamNodes.clear();
+    liveStreams.clear();
+    processIntent.clear();
+    optimisticUser = null;
+    optimisticSteers = [];
+    transcriptEl.classList.remove('is-load-pending');
+    transcriptEl.innerHTML = '';
+
+    const wrap = el('div', 'transcript-loading');
+    wrap.setAttribute('role', 'status');
+    wrap.setAttribute(
+      'aria-label',
+      T('chat.loading_history', '대화 기록을 불러오는 중…'),
+    );
+
+    const user = el('div', 'transcript-skeleton-row is-user');
+    const userBubble = el('div', 'transcript-skeleton-bubble');
+    userBubble.append(skeletonLine('is-medium'), skeletonLine('is-short'));
+    user.append(userBubble);
+
+    const assistant = el('div', 'transcript-skeleton-row is-assistant');
+    assistant.append(
+      skeletonLine('is-label'),
+      skeletonLine('is-long'),
+      skeletonLine('is-full'),
+      skeletonLine('is-medium'),
+    );
+
+    const nextUser = el('div', 'transcript-skeleton-row is-user is-secondary');
+    const nextBubble = el('div', 'transcript-skeleton-bubble');
+    nextBubble.append(skeletonLine('is-long'), skeletonLine('is-medium'));
+    nextUser.append(nextBubble);
+
+    wrap.append(user, assistant, nextUser);
+    transcriptEl.append(wrap);
+  }
+
+  /**
+   * Mark a history request as pending. Warm reads replace the transcript
+   * directly; only requests that exceed 120ms swap to the skeleton.
+   */
+  function beginLoading(sessionId) {
+    if (!initialized) init();
+    if (!initialized) return;
+    clearHistoryLoading();
+    historyLoadingSessionId = sessionId ?? null;
+    transcriptEl.classList.add('is-load-pending');
+    transcriptEl.setAttribute('aria-busy', 'true');
+    historyLoadingTimer = setTimeout(
+      () => renderHistorySkeleton(historyLoadingSessionId),
+      HISTORY_LOADING_DELAY_MS,
+    );
+  }
+
+  function renderLoadError(sessionId, error) {
+    if (!initialized) init();
+    if (!initialized || historyLoadingSessionId !== sessionId) return;
+    clearHistoryLoading();
+    activeSessionId = sessionId;
+    messages = [];
+    transcriptEl.innerHTML = '';
+    const wrap = el('div', 'transcript-load-error');
+    wrap.setAttribute('role', 'alert');
+    wrap.append(el(
+      'p',
+      'transcript-load-error-title',
+      T('chat.load_failed', '대화 기록을 불러오지 못했습니다.'),
+    ));
+    if (error?.message) {
+      wrap.append(el('p', 'transcript-load-error-detail', error.message));
+    }
+    transcriptEl.append(wrap);
+    publishChanges();
+  }
+
   function clearEmptyState() {
     const empty = transcriptEl && transcriptEl.querySelector('.transcript-empty');
     if (empty) empty.remove();
+    const loading = transcriptEl && transcriptEl.querySelector('.transcript-loading');
+    if (loading) {
+      clearHistoryLoading();
+      loading.remove();
+    }
   }
 
   // ---- defensive resync ------------------------------------------------------
@@ -2051,6 +2153,7 @@
   function renderMessages(list, sessionId) {
     if (!initialized) init();
     if (!initialized) return;
+    clearHistoryLoading();
     releaseHeldOptimisticSteers();
     if (sessionId !== undefined) activeSessionId = sessionId;
     if (reloadTimer) { clearTimeout(reloadTimer); reloadTimer = null; }
@@ -2077,6 +2180,7 @@
   }
 
   function setActiveSession(id) {
+    clearHistoryLoading();
     const next = id ?? null;
     const changed = next !== activeSessionId;
     activeSessionId = next;
@@ -2094,6 +2198,7 @@
     readOnly = false;
     if (reloadTimer) { clearTimeout(reloadTimer); reloadTimer = null; }
     if (highlightTimer) { clearTimeout(highlightTimer); highlightTimer = null; }
+    clearHistoryLoading();
     if (initialized) {
       transcriptEl.innerHTML = '';
       composerEl.value = '';
@@ -2108,6 +2213,8 @@
 
   window.Chat = {
     init,
+    beginLoading,
+    renderLoadError,
     renderMessages,
     applyEvent,
     setBusy,

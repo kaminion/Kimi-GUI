@@ -87,6 +87,58 @@ body {
   padding: 0 var(--space-2) var(--space-2);
 }
 
+/* Initial session-list skeleton. It mirrors the final two-line session rows
+   and pulses opacity only, keeping animation off the layout/paint path. */
+.session-list-loading {
+  padding-top: var(--space-2);
+  pointer-events: none;
+}
+
+.session-list-skeleton-heading,
+.session-list-skeleton-line {
+  display: block;
+  background: var(--active-bg);
+  border-radius: var(--radius-s);
+}
+
+.session-list-skeleton-heading {
+  width: 72px;
+  height: 10px;
+  margin: var(--space-1) var(--space-2) 12px;
+}
+
+.session-list-skeleton-item {
+  padding: var(--space-2);
+  animation: loading-skeleton-pulse 1.35s var(--ease-in-out) infinite;
+}
+
+.session-list-skeleton-line.title {
+  height: 12px;
+}
+
+.session-list-skeleton-line.meta {
+  height: 8px;
+  margin-top: 7px;
+  opacity: 0.72;
+}
+
+.session-list-skeleton-line.title.line-1 { width: 76%; }
+.session-list-skeleton-line.title.line-2 { width: 62%; }
+.session-list-skeleton-line.title.line-3 { width: 84%; }
+.session-list-skeleton-line.meta.line-1 { width: 48%; }
+.session-list-skeleton-line.meta.line-2 { width: 57%; }
+.session-list-skeleton-line.meta.line-3 { width: 42%; }
+
+@keyframes loading-skeleton-pulse {
+  0%,
+  100% {
+    opacity: 0.38;
+  }
+  50% {
+    opacity: 0.82;
+  }
+}
+
 /* Session groups (v1: 오늘/이전; v2: per-project, collapsible).
    Collapse hook: sidebar.js toggles .collapsed on .session-group — items
    hide and the label chevron snaps back to point right. Chevron convention
@@ -374,6 +426,89 @@ body {
   margin-right: auto;
 }
 
+#transcript.is-load-pending > * {
+  opacity: 0.38;
+  transition: opacity 0.12s var(--ease-out);
+  pointer-events: none;
+}
+
+/* Conversation-history skeleton: message-shaped blocks reserve the final
+   transcript rhythm without pretending that the old session is still active. */
+.transcript-loading {
+  width: 100%;
+  display: grid;
+  gap: var(--space-5);
+  padding-top: var(--space-2);
+  pointer-events: none;
+}
+
+.transcript-skeleton-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  animation: loading-skeleton-pulse 1.35s var(--ease-in-out) infinite;
+}
+
+.transcript-skeleton-row.is-user {
+  align-items: flex-end;
+}
+
+.transcript-skeleton-row.is-assistant {
+  animation-delay: 80ms;
+}
+
+.transcript-skeleton-row.is-secondary {
+  animation-delay: 160ms;
+}
+
+.transcript-skeleton-bubble {
+  width: min(54%, 410px);
+  display: grid;
+  gap: var(--space-2);
+  padding: 14px var(--space-3);
+  background: var(--surface-raised);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius-xl);
+}
+
+.transcript-skeleton-line {
+  display: block;
+  height: 11px;
+  background: var(--active-bg);
+  border-radius: var(--radius-s);
+}
+
+.transcript-skeleton-line.is-label {
+  width: 92px;
+  height: 9px;
+  margin-bottom: var(--space-1);
+}
+
+.transcript-skeleton-line.is-full { width: 94%; }
+.transcript-skeleton-line.is-long { width: 78%; }
+.transcript-skeleton-line.is-medium { width: 58%; }
+.transcript-skeleton-line.is-short { width: 34%; }
+
+.transcript-load-error {
+  width: min(100%, 520px);
+  padding: var(--space-4);
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.transcript-load-error-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.transcript-load-error-detail {
+  margin-top: var(--space-2);
+  font-size: 11px;
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
+
 /* Message gap: 20px (CONTRACT-V3; off-grid on purpose) */
 #transcript > * + * {
   margin-top: 20px;
@@ -387,6 +522,18 @@ body {
 /* Consecutive tool rows pack tighter */
 #transcript > .msg-tool + .msg-tool {
   margin-top: var(--space-2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .session-list-skeleton-item,
+  .transcript-skeleton-row {
+    animation: none !important;
+    opacity: 0.58;
+  }
+
+  #transcript.is-load-pending > * {
+    transition: none !important;
+  }
 }
 
 /* ---- Composer: floating rounded card, lifted one step off the base ---- */
