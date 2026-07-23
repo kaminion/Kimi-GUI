@@ -443,10 +443,6 @@
 
   function renderEmptyState() {
     const wrap = el('div', 'transcript-empty');
-    wrap.innerHTML =
-      '<svg class="transcript-empty-glyph" viewBox="0 0 64 64" width="44" height="44" aria-hidden="true">' +
-      '<path fill="currentColor" d="M44.6 6.9A27 27 0 1 0 57 44.6 24.5 24.5 0 0 1 44.6 6.9z"/>' +
-      '</svg>';
     wrap.append(el('p', 'transcript-empty-text', T('chat.empty_state', '무엇을 도와드릴까요?')));
     transcriptEl.append(wrap);
   }

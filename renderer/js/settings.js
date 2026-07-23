@@ -271,6 +271,25 @@
     });
   }
 
+  /** Log out: tombstone the shared credentials, then reload into the login gate. */
+  async function doLogout() {
+    const ok = await confirmDialog({
+      title: T('settings.account.logout_title', '로그아웃'),
+      body: T(
+        'settings.account.logout_confirm',
+        '로그아웃하면 다시 로그인할 때까지 Kimi를 사용할 수 없습니다.'
+      ),
+      confirmLabel: T('settings.account.logout', '로그아웃'),
+    });
+    if (!ok) return;
+    try {
+      await window.kimi?.logout?.();
+    } catch (err) {
+      console.warn('logout failed', err);
+    }
+    location.reload();
+  }
+
   async function switchEngine(next) {
     if (typeof window.kimi?.setEngine !== 'function') return;
     const ok = await confirmDialog({
@@ -278,8 +297,7 @@
       body: T('settings.engine.switch_confirm', '전환하면 앱이 다시 시작됩니다.'),
       confirmLabel: T('settings.engine.switch_action', '전환 및 재시작'),
     });
-    if (!ok) return;
-    try { await window.kimi.setEngine(next); }
+    if (!ok) return;    try { await window.kimi.setEngine(next); }
     catch (err) {
       console.error('setEngine failed', err);
       return;
@@ -397,7 +415,10 @@
     const consoleBtn = el('button', 'btn btn-ghost', T('settings.account.console', 'Kimi Code Console 열기'));
     consoleBtn.type = 'button';
     consoleBtn.addEventListener('click', () => { window.kimi?.openExternal?.(CONSOLE_URL); });
-    btns.append(reloginBtn, consoleBtn);
+    const logoutBtn = el('button', 'btn btn-ghost danger', T('settings.account.logout', '로그아웃'));
+    logoutBtn.type = 'button';
+    logoutBtn.addEventListener('click', () => void doLogout());
+    btns.append(reloginBtn, consoleBtn, logoutBtn);
     content.appendChild(btns);
 
     const loginArea = el('div', 'settings-login');

@@ -144,6 +144,15 @@ function registerIpc({ backend, getWindow, broadcast }) {
     else if (action === 'hide') app.hide?.();
   });
 
+  // Log out: tombstone the shared credentials (kept CLI-compatible).
+  handle('logout', () => {
+    try {
+      return require('./auth').logout();
+    } catch {
+      return { ok: false };
+    }
+  });
+
   handle('getMessages', (sessionId) => backend.getMessages(sessionId));
 
   handle('getProfile', (sessionId) => backend.getProfile(sessionId));

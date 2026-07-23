@@ -54,6 +54,8 @@ const api = {
   openExternal: (url) => invoke('openExternal', url),
   // Window controls for the menu-less build: 'close' | 'minimize' | 'hide'
   windowAction: (action) => invoke('windowAction', action),
+  // Tombstone the shared OAuth credentials (relogin required afterwards)
+  logout: () => invoke('logout'),
 
   // --- Onboarding ------------------------------------------------------------
   // { cliInstalled, cliPath, cliVersion, loggedIn, needsOnboarding }
