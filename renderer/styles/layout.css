@@ -312,10 +312,11 @@ body {
 }
 
 /* ---- Chat header (translucent, bottom hairline) ----
-   Right cluster: #model-label, #context-meter, #panel-toggle-btn ride the
-   8px flex gap after the flexible title; none of them shrink or wrap.
+   Right cluster: #model-label, #panel-toggle-btn ride the 8px flex gap after
+   the flexible title; none of them shrink or wrap.
    (v3: #model-select/#swarm-toggle moved into #composer-options; v5: the
-   header abort button is gone — #send-btn itself morphs into STOP.) */
+   header abort button is gone — #send-btn itself morphs into STOP; the
+   context meter moved to the composer options row, right edge.) */
 #chat-header {
   flex: none;
   min-height: 48px;

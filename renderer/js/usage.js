@@ -205,13 +205,28 @@
     return col;
   }
 
+  /** Compact limit row for the daily section: dot + label + value + bar + reset meta. */
+  function dailyLimitRow(cls, label, used, limit, meta) {
+    const row = el('div', `daily-limit ${cls}`);
+    row.appendChild(el('span', 'limit-dot'));
+    row.appendChild(el('span', 'daily-limit-label', label));
+    const r = ratio(used, limit);
+    const value =
+      `${fmtNum(used)} / ${fmtNum(limit)}` + (r != null ? ` (${Math.round(r * 100)}%)` : '');
+    row.appendChild(el('span', 'daily-limit-value', value));
+    row.appendChild(progressBar(r));
+    if (meta) row.appendChild(el('span', 'daily-limit-meta', meta));
+    return row;
+  }
+
   /**
    * Section 1 '오늘 사용량', inserted ABOVE the limit cards (created lazily so
    * index.html stays untouched). Hidden entirely when the preload lacks
-   * getDailyUsage (older backend) or the fetch fails. v5: token stats only —
-   * the account limits live in section 2, never duplicated here.
+   * getDailyUsage (older backend) or the fetch fails. v5: today's tokens sit
+   * next to compact rows for the account limits they consume (same quota data
+   * as section 2, one shared getQuota() promise passed by render()).
    */
-  async function renderDaily() {
+  async function renderDaily(quotaPromise) {
     const view = document.getElementById('usage-view');
     if (!view || typeof window.kimi?.getDailyUsage !== 'function') return;
     let box = document.getElementById('daily-usage');
@@ -261,6 +276,34 @@
       todayRow.appendChild(item);
     }
     box.appendChild(todayRow);
+
+    // Compact account-limit rows next to today's tokens (quota shared with
+    // section 2 via the caller's promise; hidden when quota is unavailable).
+    if (quotaPromise) {
+      const quota = await Promise.resolve(quotaPromise).catch(() => null);
+      if (quota) {
+        const limits = el('div', 'daily-limits');
+        limits.appendChild(
+          dailyLimitRow(
+            'limit-weekly',
+            T('usage.weekly.title', '주간 한도'),
+            quota.weeklyUsed,
+            quota.weeklyLimit,
+            resetLine(quota.resetsAt, 'usage.weekly.reset')
+          )
+        );
+        limits.appendChild(
+          dailyLimitRow(
+            'limit-window',
+            T('usage.window.title', '5시간 한도'),
+            quota.window5hUsed,
+            quota.window5hLimit,
+            resetLine(quota.window5hResetsAt, 'usage.window.reset')
+          )
+        );
+        box.appendChild(limits);
+      }
+    }
 
     const chart = el('div', 'daily-chart');
     const max = days.reduce(
@@ -382,7 +425,7 @@
         console.error('getQuota failed', err);
         return null;
       });
-    void renderDaily(); // section 1 above the limit cards; no need to block on it
+    void renderDaily(quotaPromise); // section 1 above the limit cards; no need to block on it
     sectionHead(
       quotaBox,
       'usage.section.limits', '계정 한도',

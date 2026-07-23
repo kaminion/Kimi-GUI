@@ -195,6 +195,7 @@
     updateChatHeader();
     setServerStatus(App.state.serverReady);
     setUpdateDot(updateReady, updateVersion);
+    updateContextMeter(App.state.contextUsage);
   });
 
   /** Invoke an optional hook on a sibling module without ever breaking boot. */
@@ -332,8 +333,9 @@
     window.Chat?.setBusy?.(!!session?.busy);
   }
 
-  /** Compact "% of context window" pill in the chat header. */
+  /** Labeled "% of context window" meter at the composer options row (right edge). */
   function updateContextMeter(usage) {
+    App.state.contextUsage = usage; // kept so language switches can re-render the label
     const el = $('#context-meter');
     const used = Number(usage?.context_tokens ?? 0);
     const limit = Number(usage?.context_limit ?? 0);
@@ -344,7 +346,8 @@
     }
     const pct = (used / limit) * 100;
     // Small conversations round to 0 — show "<1%" so the meter stays informative.
-    el.textContent = pct > 0 && pct < 1 ? '<1%' : `${Math.round(pct)}%`;
+    const pctText = pct > 0 && pct < 1 ? '<1%' : `${Math.round(pct)}%`;
+    el.textContent = `${T('chat.context_label', '컨텍스트')} ${pctText}`;
     el.style.color = pct >= 80 ? 'var(--warn)' : '';
   }
 

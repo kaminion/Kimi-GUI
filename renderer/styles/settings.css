@@ -503,3 +503,12 @@
 #composer-options .pill.disabled:active {
   background: transparent;
 }
+
+
+/* ==========================================================================
+   context meter in the composer options row (v5): parked at the row's right
+   edge; the pill look comes from components.css (#context-meter).
+   ========================================================================== */
+#composer-options #context-meter {
+  margin-left: auto;
+}

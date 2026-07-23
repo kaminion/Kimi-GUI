@@ -1525,3 +1525,52 @@
   color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
 }
+
+
+/* usage v5.1 — compact limit rows inside the daily section (colors inherit
+   the .limit-weekly/.limit-window scoping above; layout only) */
+.daily-limits {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  padding: var(--space-2) 0;
+  border-top: 0.5px solid var(--border);
+}
+
+.daily-limit {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 12px;
+}
+
+.daily-limit .limit-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+}
+
+.daily-limit-label {
+  flex: none;
+  min-width: 68px;
+  color: var(--text-secondary);
+}
+
+.daily-limit-value {
+  flex: none;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.daily-limit .progress-bar {
+  flex: 1 1 auto;
+  min-width: 48px;
+}
+
+.daily-limit-meta {
+  flex: none;
+  font-size: 11px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
