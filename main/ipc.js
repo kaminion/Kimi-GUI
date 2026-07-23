@@ -49,6 +49,7 @@ const loadOnboarding = lazyLoader('./onboarding');
 const loadUsageStats = lazyLoader('./usage-stats');
 const loadUpdater = lazyLoader('./updater');
 const loadGitWorkspace = lazyLoader('./git-workspace');
+const loadSkillManager = lazyLoader('./skill-manager');
 
 function requireOnboarding() {
   const onboarding = loadOnboarding();
@@ -75,6 +76,10 @@ function registerIpc({ backend, getWindow, broadcast }) {
   const handle = (name, fn) => {
     ipcMain.handle(`kimi:${name}`, (_event, ...args) => fn(...args));
   };
+  const SkillManager = loadSkillManager()?.SkillManager;
+  const skills = SkillManager
+    ? new SkillManager({ trashItem: (target) => shell.trashItem(target) })
+    : null;
 
   // Synchronous capabilities query for the preload (runs before the page
   // loads, so conditional window.kimi methods reflect the active engine).
@@ -154,6 +159,48 @@ function registerIpc({ backend, getWindow, broadcast }) {
     }
     return git.checkout(cwd, branch);
   });
+
+  // --- Agent Skills --------------------------------------------------------
+
+  const requireSkills = () => {
+    if (!skills) throw new Error('Agent Skills management is unavailable.');
+    return skills;
+  };
+
+  handle('skillsList', ({ cwd } = {}) => requireSkills().list({ cwd }));
+
+  handle('skillsAdd', async ({ kind, scope, cwd } = {}) => {
+    const entryKind = kind === 'file' ? 'file' : 'directory';
+    const options = entryKind === 'file'
+      ? {
+          title: 'Add Agent Skill Markdown',
+          properties: ['openFile'],
+          filters: [{ name: 'Markdown', extensions: ['md'] }],
+        }
+      : {
+          title: 'Add Agent Skill Folder',
+          properties: ['openDirectory'],
+        };
+    if (typeof cwd === 'string' && cwd.trim()) options.defaultPath = cwd;
+    const win = getWindow();
+    const result = win
+      ? await dialog.showOpenDialog(win, options)
+      : await dialog.showOpenDialog(options);
+    if (result.canceled || !result.filePaths.length) return { cancelled: true };
+    const skill = await requireSkills().install({
+      sourcePath: result.filePaths[0],
+      kind: entryKind,
+      scope: scope === 'project' ? 'project' : 'user',
+      cwd,
+    });
+    return { cancelled: false, skill };
+  });
+
+  handle('skillsSetEnabled', ({ id, enabled, cwd } = {}) =>
+    requireSkills().setEnabled({ id, enabled, cwd }));
+
+  handle('skillsRemove', ({ id, cwd } = {}) =>
+    requireSkills().remove({ id, cwd }));
 
   // Window controls for the menu-less build (renderer re-binds Cmd+W/M/H).
   handle('windowAction', (action) => {

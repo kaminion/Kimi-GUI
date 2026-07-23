@@ -7,6 +7,8 @@
  *   모델     — default model for NEW sessions (localStorage 'kimi.defaultModel');
  *             App applies it right after createSession via Settings.getDefaultModel()
  *             + v4: 스웜 기본값 toggle (localStorage 'kimi.defaultSwarm', CLI 전용)
+ *   Skills   — add local Agent Skill folders/Markdown, enable/disable them
+ *             across official discovery roots, or move them to the OS Trash.
  *   엔진     — engine picker (v3): 내장 엔진(direct, 기본) vs Kimi Code CLI(에이전트
  *             모드); switching asks to confirm, then setEngine + location.reload().
  *             Under the CLI card: CLI install status + manual install button with
@@ -41,6 +43,8 @@
   let updateState = null;     // last known { status, version?, message? }
   let engineInfo = null;      // cached getState() { engine, cliInstalled } for the 엔진 section
   let cliInstall = null;      // { running, line } while onboardingInstallCli runs
+  let skillsState = null;     // { cwd, loading, data?, error?, busyId?, notice? }
+  let skillInstallScope = 'user';
 
   function el(tag, className, text) {
     const n = document.createElement(tag);
@@ -75,6 +79,7 @@
     return [
       { id: 'general', label: T('settings.section.general', '일반') },
       { id: 'model', label: T('settings.section.model', '모델') },
+      { id: 'skills', label: T('settings.section.skills', 'Skills') },
       { id: 'engine', label: T('settings.section.engine', '엔진') },
       { id: 'account', label: T('settings.section.account', '계정') },
       { id: 'updates', label: T('settings.section.updates', '업데이트') },
@@ -618,6 +623,278 @@
     renderUpdateStatus(statusEl, restartBtn);
   }
 
+  /* ---- section: Agent Skills ---- */
+
+  function activeSkillCwd() {
+    const app = window.App;
+    const active = app?.state?.sessions?.find?.((session) => session.id === app.state.activeId);
+    if (active?.cwd) return active.cwd;
+    return lsGet('kimi.lastCwd') || null;
+  }
+
+  function skillScopeLabel(scope) {
+    return scope === 'project'
+      ? T('settings.skills.scope_project', '프로젝트')
+      : T('settings.skills.scope_user', '사용자');
+  }
+
+  function skillFamilyLabel(family) {
+    if (family === 'agents') return 'Agents';
+    if (family === 'agents-legacy') return 'Agents legacy';
+    return family ? family.charAt(0).toUpperCase() + family.slice(1) : '';
+  }
+
+  function startSkillsLoad(cwd, { keepNotice = false } = {}) {
+    if (typeof window.kimi?.skillsList !== 'function') {
+      skillsState = {
+        cwd,
+        loading: false,
+        error: T('settings.skills.unavailable', 'Skills 관리 기능을 사용할 수 없습니다.'),
+      };
+      rerender();
+      return;
+    }
+    const notice = keepNotice ? skillsState?.notice : null;
+    skillsState = { cwd, loading: true, notice };
+    window.kimi.skillsList({ cwd }).then((data) => {
+      if (!isOpen() || activeSection !== 'skills' || skillsState?.cwd !== cwd) return;
+      skillsState = { cwd, loading: false, data, notice };
+      if (!data?.projectRoot && skillInstallScope === 'project') skillInstallScope = 'user';
+      rerender();
+    }).catch((error) => {
+      if (!isOpen() || activeSection !== 'skills' || skillsState?.cwd !== cwd) return;
+      skillsState = {
+        cwd,
+        loading: false,
+        error: error?.message || String(error),
+        notice,
+      };
+      rerender();
+    });
+  }
+
+  async function addSkill(kind) {
+    if (typeof window.kimi?.skillsAdd !== 'function' || skillsState?.busyId) return;
+    const cwd = activeSkillCwd();
+    skillsState = { ...skillsState, busyId: 'add', error: null, notice: null };
+    rerender();
+    try {
+      const result = await window.kimi.skillsAdd({
+        kind,
+        scope: skillInstallScope,
+        cwd,
+      });
+      if (result?.cancelled) {
+        skillsState = { ...skillsState, busyId: null };
+        rerender();
+        return;
+      }
+      skillsState.notice = T('settings.skills.added', 'Skill을 추가했습니다.');
+      startSkillsLoad(cwd, { keepNotice: true });
+    } catch (error) {
+      skillsState = {
+        ...skillsState,
+        busyId: null,
+        error: error?.message || String(error),
+      };
+      rerender();
+    }
+  }
+
+  async function setSkillEnabled(skill, enabled) {
+    if (!skill?.id || skillsState?.busyId || typeof window.kimi?.skillsSetEnabled !== 'function') return;
+    const cwd = activeSkillCwd();
+    skillsState = { ...skillsState, busyId: skill.id, error: null, notice: null };
+    rerender();
+    try {
+      await window.kimi.skillsSetEnabled({ id: skill.id, enabled, cwd });
+      skillsState.notice = enabled
+        ? T('settings.skills.enabled_notice', 'Skill을 활성화했습니다.')
+        : T('settings.skills.disabled_notice', 'Skill을 비활성화했습니다.');
+      startSkillsLoad(cwd, { keepNotice: true });
+    } catch (error) {
+      skillsState = {
+        ...skillsState,
+        busyId: null,
+        error: error?.message || String(error),
+      };
+      rerender();
+    }
+  }
+
+  async function removeSkill(skill) {
+    if (!skill?.id || skillsState?.busyId || typeof window.kimi?.skillsRemove !== 'function') return;
+    const ok = await confirmDialog({
+      title: T('settings.skills.remove_title', 'Skill 삭제'),
+      body: T(
+        'settings.skills.remove_confirm',
+        '이 Skill을 휴지통으로 이동할까요? 휴지통에서 복구할 수 있습니다.'
+      ),
+      confirmLabel: T('settings.skills.remove', '휴지통으로 이동'),
+    });
+    if (!ok) return;
+    const cwd = activeSkillCwd();
+    skillsState = { ...skillsState, busyId: skill.id, error: null, notice: null };
+    rerender();
+    try {
+      await window.kimi.skillsRemove({ id: skill.id, cwd });
+      skillsState.notice = T('settings.skills.removed_notice', 'Skill을 휴지통으로 이동했습니다.');
+      startSkillsLoad(cwd, { keepNotice: true });
+    } catch (error) {
+      skillsState = {
+        ...skillsState,
+        busyId: null,
+        error: error?.message || String(error),
+      };
+      rerender();
+    }
+  }
+
+  function renderSkillsLoading(content) {
+    const loading = el('div', 'skills-loading');
+    loading.setAttribute('role', 'status');
+    loading.setAttribute('aria-label', T('settings.skills.loading', 'Skills 불러오는 중…'));
+    for (let i = 0; i < 3; i += 1) {
+      const row = el('div', 'skill-row skill-row-skeleton');
+      row.append(el('span', 'skill-skeleton-name'), el('span', 'skill-skeleton-line'));
+      loading.appendChild(row);
+    }
+    content.appendChild(loading);
+  }
+
+  function renderSkillRow(skill) {
+    const row = el('div', 'skill-row');
+    row.classList.toggle('disabled', !skill.enabled);
+
+    const main = el('div', 'skill-main');
+    const title = el('div', 'skill-title-row');
+    title.appendChild(el('span', 'skill-name', skill.name));
+    title.appendChild(el('span', 'skill-badge', skillScopeLabel(skill.scope)));
+    if (skill.type === 'flow') title.appendChild(el('span', 'skill-badge', 'Flow'));
+    const description = el('div', 'skill-description', skill.description);
+    const pathLine = el('div', 'skill-path', `${skillFamilyLabel(skill.family)} · ${skill.path}`);
+    pathLine.title = skill.path;
+    main.append(title, description, pathLine);
+
+    const actions = el('div', 'skill-actions');
+    const toggle = el(
+      'button',
+      `skill-toggle${skill.enabled ? ' on' : ''}`,
+      skill.enabled
+        ? T('settings.skills.enabled', '활성')
+        : T('settings.skills.disabled', '비활성')
+    );
+    toggle.type = 'button';
+    toggle.setAttribute('role', 'switch');
+    toggle.setAttribute('aria-checked', skill.enabled ? 'true' : 'false');
+    toggle.setAttribute(
+      'aria-label',
+      skill.enabled
+        ? T('settings.skills.disable_aria', 'Skill 비활성화')
+        : T('settings.skills.enable_aria', 'Skill 활성화')
+    );
+    toggle.disabled = !!skillsState?.busyId;
+    toggle.addEventListener('click', () => void setSkillEnabled(skill, !skill.enabled));
+
+    const remove = el('button', 'skill-remove', T('settings.skills.remove_short', '삭제'));
+    remove.type = 'button';
+    remove.disabled = !!skillsState?.busyId;
+    remove.addEventListener('click', () => void removeSkill(skill));
+    actions.append(toggle, remove);
+    row.append(main, actions);
+    return row;
+  }
+
+  function renderSkills(content) {
+    content.appendChild(el('h2', 'settings-section-title', T('settings.section.skills', 'Skills')));
+    content.appendChild(el(
+      'p',
+      'settings-section-lede',
+      T(
+        'settings.skills.desc',
+        'Kimi Code가 프로젝트 규칙과 작업 절차를 불러올 수 있도록 Agent Skills를 관리합니다.'
+      )
+    ));
+
+    const cwd = activeSkillCwd();
+    if (!skillsState || skillsState.cwd !== cwd) {
+      queueMicrotask(() => startSkillsLoad(cwd));
+      renderSkillsLoading(content);
+      return;
+    }
+
+    const toolbar = el('div', 'skills-toolbar');
+    const scope = document.createElement('select');
+    scope.className = 'settings-select skills-scope';
+    scope.setAttribute('aria-label', T('settings.skills.install_scope', '추가 위치'));
+    const user = document.createElement('option');
+    user.value = 'user';
+    user.textContent = T('settings.skills.scope_user', '사용자');
+    const project = document.createElement('option');
+    project.value = 'project';
+    project.textContent = T('settings.skills.scope_project', '프로젝트');
+    project.disabled = !skillsState.data?.projectRoot;
+    scope.append(user, project);
+    scope.value = project.disabled ? 'user' : skillInstallScope;
+    scope.addEventListener('change', () => { skillInstallScope = scope.value; });
+
+    const folderBtn = el('button', 'btn btn-primary', T('settings.skills.add_folder', '폴더 추가'));
+    folderBtn.type = 'button';
+    folderBtn.disabled = !!skillsState.busyId;
+    folderBtn.addEventListener('click', () => void addSkill('directory'));
+    const fileBtn = el('button', 'btn', T('settings.skills.add_file', 'Markdown 추가'));
+    fileBtn.type = 'button';
+    fileBtn.disabled = !!skillsState.busyId;
+    fileBtn.addEventListener('click', () => void addSkill('file'));
+    toolbar.append(scope, folderBtn, fileBtn);
+    content.appendChild(toolbar);
+
+    if (skillsState.notice) {
+      const notice = el('div', 'skills-notice', skillsState.notice);
+      notice.setAttribute('role', 'status');
+      content.appendChild(notice);
+    }
+    if (skillsState.error) {
+      const error = el('div', 'skills-error', skillsState.error);
+      error.setAttribute('role', 'alert');
+      content.appendChild(error);
+    }
+    if (skillsState.loading) {
+      renderSkillsLoading(content);
+      return;
+    }
+
+    const list = Array.isArray(skillsState.data?.skills) ? skillsState.data.skills : [];
+    if (!list.length) {
+      const empty = el('div', 'skills-empty');
+      empty.append(
+        el('div', 'skills-empty-title', T('settings.skills.empty_title', '추가된 Skills가 없습니다')),
+        el(
+          'div',
+          'skills-empty-desc',
+          T(
+            'settings.skills.empty_desc',
+            'SKILL.md가 있는 폴더나 단일 Markdown Skill을 추가해 보세요.'
+          )
+        )
+      );
+      content.appendChild(empty);
+    } else {
+      const listEl = el('div', 'skills-list');
+      for (const skill of list) listEl.appendChild(renderSkillRow(skill));
+      content.appendChild(listEl);
+    }
+
+    content.appendChild(el(
+      'p',
+      'skills-footnote',
+      T(
+        'settings.skills.reload_hint',
+        '변경사항은 새 대화에서 확실하게 반영됩니다. 삭제한 Skill은 운영체제 휴지통에서 복구할 수 있습니다.'
+      )
+    ));
+  }
+
   /* ---- section: 정보 ---- */
 
   function renderInfo(content) {
@@ -664,6 +941,7 @@
     content.textContent = '';
     switch (activeSection) {
       case 'model': renderModel(content); break;
+      case 'skills': renderSkills(content); break;
       case 'engine': renderEngine(content); break;
       case 'account': renderAccount(content); break;
       case 'updates': renderUpdates(content); break;
@@ -731,6 +1009,7 @@
 
   function onKeydown(e) {
     if (e.key === 'Escape') {
+      if (activeSection === 'skills' && skillsState?.busyId) return;
       e.stopPropagation();
       close();
     }

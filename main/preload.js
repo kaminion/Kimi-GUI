@@ -44,6 +44,13 @@ const api = {
   // New-chat workspace controls.
   getGitInfo: (cwd) => invoke('getGitInfo', cwd),
   checkoutGitBranch: (cwd, branch) => invoke('checkoutGitBranch', cwd, branch),
+  // Local Agent Skills repository. Mutations are serialized in main and
+  // removal always uses the OS Trash.
+  skillsList: ({ cwd } = {}) => invoke('skillsList', { cwd }),
+  skillsAdd: ({ kind, scope, cwd } = {}) => invoke('skillsAdd', { kind, scope, cwd }),
+  skillsSetEnabled: ({ id, enabled, cwd } = {}) =>
+    invoke('skillsSetEnabled', { id, enabled, cwd }),
+  skillsRemove: ({ id, cwd } = {}) => invoke('skillsRemove', { id, cwd }),
   getMessages: (sessionId) => invoke('getMessages', sessionId),
   getProfile: (sessionId) => invoke('getProfile', sessionId),
   sendPrompt: (sessionId, text) => invoke('sendPrompt', sessionId, text),
