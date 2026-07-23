@@ -84,6 +84,13 @@ message after each assistant `tool_use`; orphaned calls from aborted turns get
 an `is_error` placeholder result). Loop: request → execute `tool_use` blocks
 (with `hooks.requireApproval`) → append results → re-request, ≤25 iterations.
 
+While that loop is busy, `backend.steer()` queues user adjustments on the
+active turn. `direct-client` drains them at the next safe model boundary: after
+an assistant response, or together with that step's `tool_result` blocks. The
+store records each adjustment as a user message after the corresponding step.
+A request arriving during final persistence is continued as another direct
+turn without dropping the renderer's busy state.
+
 ## Error shapes (verified)
 
 - **401**: HTTP 401, body

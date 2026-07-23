@@ -127,28 +127,31 @@ Nothing renders pure black, so dark detail is never crushed.
   hide and the label chevron (an inline `<svg>` or `.session-group-chevron`,
   right-pointing base glyph like `.tool-chevron`) rotates back from 90°
   (down, expanded) to 0° (right, collapsed).
-- `#chat-header` is 48px, translucent with blur and a bottom hairline;
-  `#chat-title` flexes and truncates. The v2 right cluster
-  (`#model-label`, `#context-meter`, `#model-select`, `#swarm-toggle`,
-  `#panel-toggle-btn`, `#abort-btn`) rides the header's 8px flex gap and
-  never shrinks (`#chat-header > :not(#chat-title) { flex: none }`).
+- `#chat-header` is translucent with blur and a bottom hairline;
+  `#chat-title-group` flexes and truncates while `#panel-toggle-btn` stays at
+  the right edge. Model, Swarm, effort, branch, and context metadata live in
+  the composer options row.
 - `#composer-wrap` is a floating card: 12px radius, 0.5px border,
   `--surface-raised` fill (lifts off the charcoal base in dark), subtle
   `--shadow-card`, centered at `max-width: 800px` (matches the transcript
   column) with 16px bottom margin.
   `:focus-within` moves the accent ring to the card (textarea itself has no
   outline). The textarea auto-grows via JS and scrolls past `max-height: 160px`.
+  A new conversation alone shows `#draft-context` above it, restoring the most
+  recently used project and listing local branches. During an active run the
+  textarea remains editable for steering; `#send-btn` sends the adjustment and
+  `#composer-abort-btn` remains a separate stop action.
 - `#usage-view` is a scrollable column: `#quota-cards` wraps a
   `.usage-section-title` plus `.usage-card-grid`
   (`repeat(auto-fit, minmax(220px, 1fr))` of `.usage-card`s); the
   `#session-usage` card below holds `.usage-row` label/value pairs and the
   `.usage-context` block.
-- `[hidden]` carries `display: none !important` in the reset so toggling the
-  attribute on `#chat-view` / `#usage-view` / `#abort-btn` always wins.
+- `[hidden]` carries `display: none !important` in the reset so toggling view,
+  draft-context, change-summary, and abort controls always wins.
 
 ## v2 chrome: ghost-icon pills
 
-`#model-select`, `#swarm-toggle` (chat header, both carry `.pill` in the DOM
+`#model-select`, `#swarm-toggle` (composer row, both carry `.pill` in the DOM
 contract and are restyled as ghosts by id), `#panel-toggle-btn` (chat
 header), `#search-open-btn` (sidebar header), `#settings-btn` (sidebar
 footer): transparent pills, 12px label text, 26px minimum hit area,
@@ -158,8 +161,9 @@ footer): transparent pills, 12px label text, 26px minimum hit area,
 `#model-select` instead gets a trailing 10px chevron `::after` and a
 180px max-width with ellipsis on a `<span>` label. If the markup ever uses
 an inline `<svg>`, the CSS glyph hides via `:has(svg)` (same convention as
-`#send-btn`). Swarm engaged state hooks (any works): `.on`, `.active`,
-`[aria-pressed="true"]` → accent text on `--accent-soft`.
+`#send-btn`). Swarm always includes an explicit `.swarm-state` label
+(`ON`/`OFF`) in addition to `.on` / `[aria-pressed]` styling, so state never
+depends on color alone.
 
 ## v3 messages & readability
 
@@ -172,9 +176,10 @@ an inline `<svg>`, the CSS glyph hides via `:has(svg)` (same convention as
 - Inline code chips use a border one step stronger than `--border`
   (`rgba(255,255,255,.12)` in dark; light keeps the v1 hairline) so they
   read clearly on both the base and raised surfaces.
-- Fenced code blocks: 13px mono, `12px 14px` padding. The `.code-block`
-  header bar is a distinct darker layer (`--bg-secondary` over `--code-bg`)
-  with the language label left-aligned to the code padding; light theme
+- Fenced code blocks: 13px mono, `12px 14px` padding. The `.code-header`
+  toolbar is a 32px distinct layer (`--bg-secondary` over `--code-bg`)
+  with the language label left-aligned to the code padding and the copy
+  action fixed at the top-right outside the scrollable code body; light theme
   keeps the v1 translucent wash.
 - Tables are **hairline-only**: horizontal 0.5px row separators, no boxed
   grid; header row keeps the `--bg-secondary` fill.
@@ -198,9 +203,11 @@ instead of being buried inside the generic tool log.
   after the thinking disclosure collapses.
 - The component uses the existing dark-first tokens and has an explicit
   narrow-window layout at 640px.
-- `#changes-summary-btn` appears in the composer options row when the active
-  session has recorded edits. It reports the unique file count plus cumulative
-  added/deleted line totals.
+- `#changes-summary-btn` appears centered in `#composer-change-status`,
+  immediately above the prompt, when the active session has recorded edits. It
+  reports the unique file count plus cumulative added/deleted line totals.
+- Its former options-row position is `#branch-indicator`, a read-only display
+  of the active worktree branch (or localized `None`).
 - The right side uses one persistent `#panel` with `Activity` and `Changes`
   tabs; it never creates or stacks a second inspector. Clicking the composer
   summary opens the existing panel and selects its `Changes` tab.
@@ -278,8 +285,8 @@ expects (reconcile here if your markup differs):
 
 <!-- Code block emitted by markdown.js (bare .md > pre is also styled) -->
 <div class="code-block">
-  <div class="code-block-header">
-    <span class="code-lang">python</span>
+  <div class="code-header">
+    <span class="code-lang">Python</span>
     <button class="code-copy-btn">복사</button>
   </div>
   <pre><code class="hljs language-python">…</code></pre>

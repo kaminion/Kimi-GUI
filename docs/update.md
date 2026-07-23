@@ -7,11 +7,15 @@ CONTRACT-V2 §Auto-update를 따른다.
 
 - 패키징된 앱(`app.isPackaged === true`)에서만 실제로 동작한다. 등록(`register`) 10초 후
   자동으로 무음 검사 1회를 수행하고, 이후 검사는 설정 모달의 "업데이트 확인" 버튼(수동)으로만 이뤄진다.
-- `autoDownload = true`이므로 새 버전이 발견되면 백그라운드에서 자동으로 다운로드한다.
-  다운로드가 끝나면 `autoInstallOnAppQuit` 덕분에 앱 종료 시 자동 설치되고, 사용자가 즉시
-  설치를 원하면 설정에서 "다시 시작하여 설치"(→ `kimi:updateQuitAndInstall`)를 호출한다.
+- `autoDownload = false`다. 새 버전을 발견하면 렌더러가 업데이트 여부를 묻는 팝업을
+  표시하고, 사용자가 "업데이트"를 선택한 뒤에만 `kimi:updateDownload`를 호출한다.
+- 팝업은 다운로드 진행률을 표시하며 완료 후 "재시작 및 설치"로 전환된다. "나중에"를
+  선택하면 같은 앱 실행 중에는 같은 버전을 다시 묻지 않고, 다음 실행 시 다시 확인한다.
+- 다운로드가 끝나면 `autoInstallOnAppQuit` 덕분에 앱 종료 시 자동 설치되고, 사용자가 즉시
+  설치를 원하면 팝업 또는 설정에서 `kimi:updateQuitAndInstall`을 호출한다.
 - IPC 채널:
   - `kimi:updateCheck` → `{ status, version?, message? }`
+  - `kimi:updateDownload` → 사용자가 동의한 업데이트를 다운로드하고 진행률 이벤트를 푸시
   - `kimi:updateQuitAndInstall` → 다운로드 완료 상태면 IPC 응답을 먼저 본 뒤
     `quitAndInstall(false, true)`(설치 후 앱 재실행)를 호출한다.
 - 진행 상황은 푸시 이벤트(`kimi:event` 채널)로 전달된다:
@@ -23,7 +27,7 @@ CONTRACT-V2 §Auto-update를 따른다.
 | ------------- | ------------------------------------------------ |
 | `dev`         | 개발 빌드이거나 업데이트 미설정/모듈 없음(정상)  |
 | `checking`    | 업데이트 확인 중                                 |
-| `available`   | 새 버전 발견, 다운로드 시작                      |
+| `available`   | 새 버전 발견, 사용자 선택 대기                    |
 | `downloading` | 다운로드 중 (`percent` 동반)                     |
 | `downloaded`  | 다운로드 완료, 설치 가능 (`version` 동반)        |
 | `none`        | 최신 버전 사용 중                                |
@@ -73,4 +77,5 @@ CONTRACT-V2 §Auto-update를 따른다.
 - Release에서 플랫폼별 업데이트 메타데이터(`latest-mac.yml` 또는
   `latest.yml`)가 누락되면 해당 플랫폼의 업데이트 검사가 실패한다.
 - 동시에 여러 검사가 요청되면 진행 중인 검사를 공유한다(중복 실행 안 함).
+- 동시에 여러 다운로드가 요청되면 진행 중인 다운로드를 공유한다(중복 실행 안 함).
 - 업데이트 오류 메시지는 300자로 절단해 푸시하며, 토큰 등 비밀 값은 로깅하지 않는다.

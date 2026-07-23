@@ -31,6 +31,7 @@ setSessionSwarm(sessionId, enabled)               // ONLY if an endpoint is disc
 listTasks(sessionId)                              // GET /sessions/{id}/tasks
 searchAll(query, limit=50) -> [ { sessionId, sessionTitle, cwd, messageId, role, snippet, createdAt } ]
 updateCheck() -> { status:'dev'|'checking'|'available'|'downloading'|'downloaded'|'none'|'error', version?, message? }
+updateDownload() -> same status snapshot           // explicit user consent required
 updateQuitAndInstall()
 getAppVersion() -> string
 ```
@@ -127,7 +128,7 @@ CSS order: base, layout, components, onboarding, panel, settings.
 ### Auto-update (M3)
 - electron-updater dep + package.json `publish` placeholder (github provider, owner/repo TODO comments impossible
   in JSON → document in docs/update.md). updater.js: exports `register({ ipcMain, send })` wiring
-  'kimi:updateCheck'/'kimi:updateQuitAndInstall'; in dev or unconfigured → status 'dev' (graceful, no crash);
+  'kimi:updateCheck'/'kimi:updateDownload'/'kimi:updateQuitAndInstall'; in dev or unconfigured → status 'dev' (graceful, no crash);
   when packaged: autoUpdater events → send({type:'update',...}); silent check on launch + manual via settings.
 
 ## Rules

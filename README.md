@@ -1,4 +1,4 @@
-# kimi-gui [![Version](https://img.shields.io/badge/version-0.5.1-blue)](./package.json) [![Commit Activity](https://img.shields.io/github/commit-activity/m/kaminion/kimi-gui)](https://github.com/kaminion/kimi-gui/graphs/commit-activity) [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey)](#requirements)
+# kimi-gui [![Version](https://img.shields.io/badge/version-0.6.0-blue)](./package.json) [![Commit Activity](https://img.shields.io/github/commit-activity/m/kaminion/kimi-gui)](https://github.com/kaminion/kimi-gui/graphs/commit-activity) [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey)](#requirements)
 
 [Kimi Code](https://www.kimi.com/code/) | [GitHub](https://github.com/kaminion/kimi-gui) | [한국어](./README.ko.md)
 
@@ -23,6 +23,8 @@ Launch kimi-gui, select **Log in**, and complete Kimi's verification in your bro
 ![kimi-gui first-launch screen with a simple Log in to Kimi prompt](./docs/media/kimi-login.png)
 
 Your credentials are stored under `~/.kimi-code/credentials` and can be shared with Kimi Code CLI, so one Kimi sign-in works across both experiences.
+
+When the built-in engine starts, one optional dialog offers CLI agent mode. It shows **Connect CLI** when the CLI is ready or **Install CLI** when it is missing, with a **Do not show again** option.
 
 ### Run from source
 
@@ -73,13 +75,23 @@ Built-in and CLI sessions share one sidebar. Continue compatible sessions, renam
 
 ### Controls next to the prompt
 
-Choose a model and thinking effort per conversation from compact composer controls. CLI agent mode also exposes a swarm toggle. A live context meter shows how much of the active model window is in use.
+Before the first message of a new conversation, choose the project directory
+(defaulting to the most recently used one) and an existing local Git branch.
+After the conversation starts, the options row shows the current working
+branch.
+
+Choose a model and thinking effort per conversation from compact composer
+controls. CLI agent mode exposes an explicit `Swarm ON/OFF` control. While a
+response is running, the prompt stays editable: Enter steers the current work,
+and a separate stop button remains available. A live context meter shows how
+much of the active model window is in use.
 
 ### Agent activity and usage
 
 File edits are shown as GPT/Codex-style change cards in the conversation, with
-per-file diffs and added/deleted line counts. A compact summary below the
-composer reports the number of changed files and cumulative `+`/`-` totals.
+per-file diffs and added/deleted line counts. A compact summary centered
+immediately above the prompt reports the number of changed files and cumulative
+`+`/`-` totals.
 Selecting it opens the single right-side panel on its **Changes** tab; switch to
 **Activity** in the same panel to see current status, tasks, tool activity, and
 touched files.

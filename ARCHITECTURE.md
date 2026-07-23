@@ -79,7 +79,9 @@ per-session usage only.
 getState() -> { ready, version, defaultModel, error? }
 listSessions() -> [ { id, title, cwd, updatedAt, busy, usage? } ]
 createSession({ cwd }) -> session
-pickDirectory() -> string | null        // native open dialog
+pickDirectory(defaultPath?) -> string | null        // native open dialog
+getGitInfo(cwd) -> { isRepository, current, branches[] }
+checkoutGitBranch(cwd, branch) -> { current, branches[], changed }
 getMessages(sessionId) -> [message]
 getProfile(sessionId) -> profile        // includes usage
 sendPrompt(sessionId, text)
@@ -119,8 +121,23 @@ IPC: `ipcMain.handle` for request/response channels `kimi:<name>`; push via `web
         </header>
         <div id="transcript"></div>
         <div id="composer-wrap">
+          <div id="draft-context" hidden>
+            <button id="draft-directory-btn"></button>
+            <select id="draft-branch-select" disabled></select>
+          </div>
+          <div id="composer-change-status" hidden>
+            <button id="changes-summary-btn" hidden></button>
+          </div>
           <textarea id="composer" rows="1"></textarea>
+          <button id="composer-abort-btn" hidden></button>
           <button id="send-btn"></button>
+          <div id="composer-options">
+            <button id="model-select"></button>
+            <button id="swarm-toggle"></button>
+            <button id="effort-select"></button>
+            <span id="branch-indicator"></span>
+            <span id="context-meter"></span>
+          </div>
         </div>
       </section>
       <section id="usage-view" hidden>
@@ -142,7 +159,8 @@ IPC: `ipcMain.handle` for request/response channels `kimi:<name>`; push via `web
 - Streaming: update the in-progress assistant block in place; auto-scroll unless user scrolled up.
 - `window.marked` + `window.hljs` globals are provided via `vendor/` script tags in index.html
   (loaded BEFORE js modules). markdown.js: GitHub-style sanitation (no raw HTML), code blocks
-  highlighted, lang label + copy button.
+  highlighted, with a fixed `.code-header` toolbar above the scrollable code surface. The
+  language label stays left-aligned and the copy action stays in the top-right corner.
 
 ## Styling (design agent owns all CSS; these tokens are fixed)
 
@@ -170,4 +188,8 @@ app.js: boot (getState → listSessions → select most recent), global onEvent 
   detach the HTTP daemon, and exit with code `0`; probe `/healthz` before treating an exit as failure.
 - If the CLI is missing or its daemon is unreachable, persist and start the built-in direct engine.
   The fatal boot page is reserved for the unlikely case where neither engine is available.
+- After a normal direct-engine boot, offer CLI agent mode in one optional dialog. Show `Connect`
+  when the CLI is installed and `Install` when it is absent; installation completion changes the
+  same dialog to `Connect`. A renderer-local "do not show again" preference suppresses future
+  offers. Never show the offer during the same boot that automatically fell back from a failed CLI.
 - `before-quit`: client.shutdown(). All server stdout → `console` (prefix `[kimi-server]`).
