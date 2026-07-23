@@ -515,7 +515,15 @@
     if (msg.status === 'done') {
       login = null;
       loginError = null;
-      void loadOnboardingState().then(() => { if (isOpen()) rerender(); });
+      void Promise.resolve(window.kimi?.bootstrapRetry?.())
+        .catch((error) => {
+          console.warn('bootstrapRetry after login failed', error);
+        })
+        .then(() => loadOnboardingState())
+        .then(() => {
+          void window.App?.refreshSessions?.();
+          if (isOpen()) rerender();
+        });
     } else if (msg.status === 'error') {
       if (!login) return; // not our flow
       login = null;
@@ -970,10 +978,14 @@
 
   /* ---- public API ---- */
 
-  function open() {
+  function open(section, options = {}) {
     if (backdropEl) return;
     const root = document.getElementById('settings-root');
     if (!root) return;
+    if (sections().some((item) => item.id === section)) activeSection = section;
+    if (activeSection === 'account' && options.notice) {
+      loginError = String(options.notice);
+    }
 
     backdropEl = el('div', 'modal-backdrop settings-backdrop');
     const modal = el('div', 'settings-modal');

@@ -2091,10 +2091,14 @@
     setBusy(true); // enables steer mode until the server reports idle again
     Promise.resolve()
       .then(() => app.sendPrompt(text))
-      .then((ok) => {
-        // App.sendPrompt swallows its errors and reports failure as false.
-        if (ok === false) {
-          appendSystemNote(T('chat.send_failed', '메시지 전송에 실패했습니다. 다시 시도해 주세요.'));
+      .then((result) => {
+        // App.sendPrompt returns a localized reason when the failure is
+        // recoverable (for example, an expired Kimi login).
+        if (result === false || result?.ok === false) {
+          appendSystemNote(
+            result?.error ||
+            T('chat.send_failed', '메시지 전송에 실패했습니다. 다시 시도해 주세요.'),
+          );
           setBusy(false);
         }
       })

@@ -58,6 +58,7 @@ const { randomUUID } = require('node:crypto');
 
 const { resolveKimiPath } = require('./server-manager');
 const { DirectSteerQueue } = require('./steer-queue');
+const { authRequiredError, requiresCliLogin } = require('./cli-auth-state');
 
 // ---------------------------------------------------------------------------
 // Static direct-engine facts (CONTRACT-V3 "Verified facts")
@@ -281,6 +282,19 @@ async function isCliInstalled() {
   } catch {
     return false;
   }
+}
+
+async function assertCliCanPrompt(client) {
+  if (!client || typeof client.auth !== 'function') return;
+  let snapshot;
+  try {
+    snapshot = await client.auth();
+  } catch {
+    // Prompt submission remains the source of truth if the optional auth
+    // preflight endpoint is temporarily unavailable.
+    return;
+  }
+  if (requiresCliLogin(snapshot)) throw authRequiredError();
 }
 
 // ---------------------------------------------------------------------------
@@ -655,7 +669,20 @@ async function getState() {
       await fallbackToDirect(cli.error || 'Kimi Code CLI server failed to start');
     }
   }
-  const [cliInstalled, loggedIn] = await Promise.all([isCliInstalled(), Promise.resolve(isLoggedIn())]);
+  const [cliInstalled, localLoggedIn] = await Promise.all([
+    isCliInstalled(),
+    Promise.resolve(isLoggedIn()),
+  ]);
+  let loggedIn = localLoggedIn;
+  if (currentEngine === 'cli' && cli.client && typeof cli.client.auth === 'function') {
+    try {
+      const snapshot = await cli.client.auth();
+      if (requiresCliLogin(snapshot)) loggedIn = false;
+    } catch {
+      // Local credentials remain the fallback when the daemon auth snapshot
+      // cannot be read during bootstrap.
+    }
+  }
   return {
     ...currentStatus(),
     version: currentEngine === 'cli' ? cli.version : null,
@@ -849,6 +876,7 @@ async function listSessions() {
 async function createSession({ cwd } = {}) {
   if (currentEngine === 'cli') {
     const client = requireCli();
+    await assertCliCanPrompt(client);
     const session = await client.createSession({ cwd });
     // Stream the new session's events from the start (first turn included).
     if (session && typeof session.id === 'string') client.subscribeSession(session.id);
@@ -1178,7 +1206,9 @@ async function rejectIfDirectSession(sessionId) {
 async function sendPrompt(sessionId, text) {
   if (currentEngine === 'cli') {
     await rejectIfDirectSession(sessionId);
-    return requireCli().sendPrompt(sessionId, text);
+    const client = requireCli();
+    await assertCliCanPrompt(client);
+    return client.sendPrompt(sessionId, text);
   }
   return directSendPrompt(sessionId, text);
 }

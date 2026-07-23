@@ -193,8 +193,26 @@
         return true;
       } catch (err) {
         console.error('sendPrompt failed', err);
-        if (!App.state.activeId) setDraftContextError(err?.message || String(err));
-        return false;
+        const rawMessage = err?.message || String(err);
+        const authRequired = rawMessage.includes('[KIMI_AUTH_REQUIRED]');
+        const userMessage = authRequired
+          ? T(
+            'chat.auth_required',
+            'Kimi 로그인이 만료되었습니다. 계정에서 다시 로그인한 뒤 전송해 주세요.',
+          )
+          : rawMessage
+            .replace(/^Error invoking remote method '[^']+':\s*/i, '')
+            .replace(/^Error:\s*/i, '');
+        if (authRequired) {
+          safeCall(() => window.Settings?.open?.('account', {
+            notice: T(
+              'chat.auth_required',
+              'Kimi 로그인이 만료되었습니다. 계정에서 다시 로그인한 뒤 전송해 주세요.',
+            ),
+          }));
+        }
+        if (!App.state.activeId) setDraftContextError(userMessage);
+        return { ok: false, error: userMessage, authRequired };
       }
     },
 
