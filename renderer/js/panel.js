@@ -46,7 +46,7 @@
     root: null, title: null, closeBtn: null, content: null,
     tabs: null, activityTab: null, changesTab: null, changesTabCount: null,
     work: null, status: null, tasks: null, activity: null, files: null, changes: null,
-    summaryBtn: null, composerOptions: null, empty: null,
+    summaryBtn: null, composerChangeStatus: null, empty: null,
   };
   let bound = false;
   let open = false;
@@ -349,7 +349,7 @@
     }
     if (!els.summaryBtn) return;
     els.summaryBtn.hidden = !hasChanges;
-    els.composerOptions?.classList.toggle('has-file-changes', hasChanges);
+    if (els.composerChangeStatus) els.composerChangeStatus.hidden = !hasChanges;
     if (!hasChanges) {
       els.summaryBtn.textContent = '';
       return;
@@ -679,7 +679,7 @@
     els.files = document.getElementById('panel-files');
     els.changes = document.getElementById('panel-changes');
     els.summaryBtn = document.getElementById('changes-summary-btn');
-    els.composerOptions = document.getElementById('composer-options');
+    els.composerChangeStatus = document.getElementById('composer-change-status');
 
     if (els.closeBtn) {
       if (!els.closeBtn.textContent) els.closeBtn.textContent = '✕';

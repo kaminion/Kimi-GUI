@@ -85,7 +85,10 @@
     <main id="main">
       <section id="chat-view">
         <header id="chat-header">
-          <span id="chat-title"></span>
+          <div id="chat-title-group">
+            <span id="chat-section-label" data-i18n="chat.section_label">Conversation</span>
+            <span id="chat-title"></span>
+          </div>
           <span id="model-label"></span>
           <button id="panel-toggle-btn" type="button" title="Agent panel — view run status and tool activity"
                   aria-label="Agent panel"
@@ -98,11 +101,35 @@
         </header>
         <div id="transcript"></div>
         <div id="composer-wrap">
+          <!-- Only visible before the first prompt of a new conversation. The
+               last project is restored by app.js; Git branches are local-only. -->
+          <div id="draft-context" hidden>
+            <button id="draft-directory-btn" class="draft-context-control" type="button">
+              <span class="draft-context-label" data-i18n="workspace.project">Project</span>
+              <span id="draft-directory-value" class="draft-context-value"></span>
+            </button>
+            <label id="draft-branch-control" class="draft-context-control">
+              <span class="draft-context-label" data-i18n="workspace.branch">Branch</span>
+              <select id="draft-branch-select" disabled
+                      aria-label="Working branch" data-i18n-aria="workspace.branch_aria">
+                <option data-i18n="workspace.none">None</option>
+              </select>
+            </label>
+            <span id="draft-context-error" role="alert" hidden></span>
+          </div>
+          <!-- During a conversation, Codex-style change totals occupy the
+               centered status line immediately above the prompt. -->
+          <div id="composer-change-status" hidden>
+            <button id="changes-summary-btn" type="button" hidden
+                    title="Review file changes" aria-label="Review file changes"></button>
+          </div>
           <textarea id="composer" rows="1" placeholder="Type a message…" aria-label="Message input"
                     data-i18n-placeholder="chat.composer_placeholder" data-i18n-aria="chat.composer_aria"></textarea>
-          <!-- Intentionally empty: the arrow glyph is a CSS mask (components.css);
-               while the session is busy the button morphs into a stop button
-               (.stop-mode) drawn by CSS as well. -->
+          <button id="composer-abort-btn" type="button" hidden
+                  title="Stop" aria-label="Stop"
+                  data-i18n-title="chat.abort_title" data-i18n-aria="chat.abort_title"></button>
+          <!-- Intentionally empty: the arrow glyph is a CSS mask. During a
+               running turn it sends steering instructions; stop stays separate. -->
           <button id="send-btn" type="button" title="Send (↵)" aria-label="Send"
                   data-i18n-title="chat.send_title" data-i18n-aria="chat.send_aria"></button>
           <!-- v3 composer options row: model / swarm / thinking-effort pills
@@ -112,8 +139,7 @@
                     title="Select model — applies to this chat" data-i18n-title="options.model.pick_title"></button>
             <button id="swarm-toggle" class="pill" type="button" hidden></button>
             <button id="effort-select" class="pill" type="button" hidden></button>
-            <button id="changes-summary-btn" type="button" hidden
-                    title="Review file changes" aria-label="Review file changes"></button>
+            <span id="branch-indicator" role="status" hidden></span>
             <!-- context meter rides at the row's right edge (v5) -->
             <span id="context-meter" role="status"></span>
           </div>
@@ -190,6 +216,8 @@
   <script src="js/chat.js"></script>
   <script src="js/approvals.js"></script>
   <script src="js/onboarding.js"></script>
+  <script src="js/cli-connect-prompt.js"></script>
+  <script src="js/update-prompt.js"></script>
   <script src="js/search.js"></script>
   <script src="js/panel.js"></script>
   <script src="js/settings.js"></script>

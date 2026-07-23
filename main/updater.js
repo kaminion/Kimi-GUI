@@ -5,6 +5,7 @@
  *
  * register({ ipcMain, send }) wires:
  *   ipcMain.handle('kimi:updateCheck')          — manual check (settings UI)
+ *   ipcMain.handle('kimi:updateDownload')       — download after user consent
  *   ipcMain.handle('kimi:updateQuitAndInstall') — restart into a downloaded update
  * and forwards autoUpdater events as push payloads on the 'kimi:event' channel:
  *   send({ type: 'update', status, version?, percent?, message? })
@@ -42,6 +43,7 @@ function loadAutoUpdater() {
 const current = { status: 'none', version: null, message: null };
 let updateReady = false; // an update finished downloading and can be installed
 let checkInFlight = null; // Promise of a running check (manual + silent share it)
+let downloadInFlight = null; // Promise of the user-approved download
 
 function truncate(value, max = 300) {
   const text = String(value ?? '');
@@ -51,6 +53,7 @@ function truncate(value, max = 300) {
 function snapshot() {
   const result = { status: current.status };
   if (current.version) result.version = current.version;
+  if (typeof current.percent === 'number') result.percent = current.percent;
   if (current.message) result.message = current.message;
   return result;
 }
@@ -59,12 +62,13 @@ function snapshot() {
 function report(send, { status, version = null, percent, message = null }) {
   current.status = status;
   if (version) current.version = version;
+  current.percent = typeof percent === 'number' ? percent : null;
   current.message = message;
   if (status === 'checking') updateReady = false; // superseded by the new check
   if (status === 'downloaded') updateReady = true;
 
   const payload = { type: 'update', status };
-  if (version) payload.version = version;
+  if (current.version) payload.version = current.version;
   if (typeof percent === 'number') payload.percent = percent;
   if (message) payload.message = message;
   try {
@@ -125,6 +129,33 @@ async function quitAndInstall() {
   return result;
 }
 
+async function downloadUpdate(send) {
+  const updater = loadAutoUpdater();
+  if (!updater || !app.isPackaged) return { status: 'dev' };
+  if (updateReady) return snapshot();
+  if (downloadInFlight) return downloadInFlight;
+  if (current.status !== 'available' && current.status !== 'downloading') return snapshot();
+
+  report(send, {
+    status: 'downloading',
+    version: current.version,
+    percent: typeof current.percent === 'number' ? current.percent : 0,
+  });
+  downloadInFlight = updater
+    .downloadUpdate()
+    .then(() => snapshot())
+    .catch((err) => {
+      const message = truncate(err && err.message ? err.message : err);
+      console.warn(`[kimi-desktop] update download failed: ${message}`);
+      report(send, { status: 'error', version: current.version, message });
+      return snapshot();
+    })
+    .finally(() => {
+      downloadInFlight = null;
+    });
+  return downloadInFlight;
+}
+
 function register({ ipcMain, send } = {}) {
   if (!ipcMain || typeof ipcMain.handle !== 'function') {
     console.error('[kimi-desktop] updater.register: ipcMain missing — update IPC not wired');
@@ -133,12 +164,15 @@ function register({ ipcMain, send } = {}) {
   const safeSend = typeof send === 'function' ? send : () => {};
 
   ipcMain.handle('kimi:updateCheck', () => runCheck(safeSend));
+  ipcMain.handle('kimi:updateDownload', () => downloadUpdate(safeSend));
   ipcMain.handle('kimi:updateQuitAndInstall', () => quitAndInstall());
 
   const updater = loadAutoUpdater();
   if (!updater || !app.isPackaged) return; // dev builds: IPC stubs only
 
-  updater.autoDownload = true;
+  // A release is never downloaded until the renderer's update dialog records
+  // an explicit user choice and calls kimi:updateDownload.
+  updater.autoDownload = false;
   updater.autoInstallOnAppQuit = true; // already the default; be explicit
 
   updater.on('checking-for-update', () => report(safeSend, { status: 'checking' }));
@@ -150,7 +184,11 @@ function register({ ipcMain, send } = {}) {
   );
   updater.on('download-progress', (progress) => {
     const raw = progress && typeof progress.percent === 'number' ? progress.percent : 0;
-    report(safeSend, { status: 'downloading', percent: Math.round(raw * 10) / 10 });
+    report(safeSend, {
+      status: 'downloading',
+      version: current.version,
+      percent: Math.round(raw * 10) / 10,
+    });
   });
   updater.on('update-downloaded', (info) =>
     report(safeSend, { status: 'downloaded', version: info && info.version }),

@@ -528,6 +528,11 @@
       case 'checking':
         return T('settings.update.status.checking', '확인 중…');
       case 'available':
+        return s.version
+          ? T('settings.update.status.available', '새 버전') +
+            ` v${s.version}` +
+            T('settings.update.status.available_suffix', ' 사용 가능')
+          : T('settings.update.status.available_unknown', '새 버전을 사용할 수 있습니다');
       case 'downloading':
         return s.version
           ? T('settings.update.status.downloading', '새 버전') +

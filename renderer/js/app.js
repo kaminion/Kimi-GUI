@@ -14,6 +14,12 @@
   let chatOptionsInited = false;  // ChatOptions.init() runs exactly once
   let updateReady = false;        // a downloaded update is waiting to install
   let updateVersion = null;       // version of the downloaded update
+  let updateStatus = null;        // available | downloading | downloaded
+  let draftCwd = null;            // new-chat workspace chosen before first send
+  let draftBranch = null;         // local branch chosen for the new chat
+  let draftGitInfo = null;
+  let draftInfoRequest = 0;
+  let branchInfoRequest = 0;
 
   const App = {
     state: {
@@ -43,6 +49,7 @@
         updateContextMeter(null);
         window.Chat?.renderMessages?.([], null);
         syncComposerForSession(null);
+        void prepareDraftContext();
       }
       window.Sidebar?.render?.(App.state);
     },
@@ -81,8 +88,10 @@
       App.state.activeId = id;
       App.showView('chat');
       window.Sidebar?.render?.(App.state);
+      const session = App.state.sessions.find((s) => s.id === id);
+      rememberCwd(session?.cwd);
       updateChatHeader();
-      syncComposerForSession(App.state.sessions.find((s) => s.id === id));
+      syncComposerForSession(session);
       refreshChatOptions(id);
       notifyPanelSession(id);
       try {
@@ -119,6 +128,7 @@
       refreshChatOptions(null);
       notifyPanelSession(null);
       window.Chat?.renderMessages?.([], null);
+      void prepareDraftContext();
       $('#composer')?.focus();
     },
 
@@ -133,13 +143,23 @@
       try {
         let id = App.state.activeId;
         if (!id) {
-          let cwd = null;
-          try { cwd = localStorage.getItem(LAST_CWD_KEY); } catch (_) { /* ignore */ }
+          let cwd = draftCwd || readRecentCwd();
           if (!cwd) {
             cwd = await window.kimi.pickDirectory();
             if (!cwd) return false; // user cancelled the picker
-            try { localStorage.setItem(LAST_CWD_KEY, cwd); } catch (_) { /* ignore */ }
+            draftCwd = cwd;
+            await loadDraftGitInfo(cwd);
           }
+          clearDraftContextError();
+          if (
+            draftBranch &&
+            draftGitInfo?.isRepository &&
+            draftBranch !== draftGitInfo.current
+          ) {
+            const switched = await window.kimi.checkoutGitBranch(cwd, draftBranch);
+            draftGitInfo = switched;
+          }
+          rememberCwd(cwd);
           const session = await window.kimi.createSession({ cwd });
           // The server ignores agent_config.model in the create body, so the
           // model must be set via the profile endpoint before the first prompt.
@@ -161,6 +181,24 @@
         return true;
       } catch (err) {
         console.error('sendPrompt failed', err);
+        if (!App.state.activeId) setDraftContextError(err?.message || String(err));
+        return false;
+      }
+    },
+
+    /** Inject a user adjustment into the active turn without starting a new turn. */
+    async steer(text) {
+      text = String(text ?? '').trim();
+      const id = App.state.activeId;
+      if (!text || !id || !App.state.serverReady || typeof window.kimi?.steer !== 'function') {
+        return false;
+      }
+      try {
+        await window.kimi.steer(id, text);
+        scheduleRefreshSessions();
+        return true;
+      } catch (err) {
+        console.error('steer failed', err);
         return false;
       }
     },
@@ -195,8 +233,13 @@
     window.Sidebar?.render?.(App.state);
     updateChatHeader();
     setServerStatus(App.state.serverReady);
-    setUpdateDot(updateReady, updateVersion);
+    setUpdateDot(updateReady, updateVersion, updateStatus);
     updateContextMeter(App.state.contextUsage);
+    if (!App.state.activeId) {
+      const value = $('#draft-directory-value');
+      if (value && !draftCwd) value.textContent = T('workspace.choose_project', '프로젝트 디렉터리 선택');
+      setDraftBranchOptions(draftGitInfo, draftBranch);
+    }
   });
 
   /** Invoke an optional hook on a sibling module without ever breaking boot. */
@@ -300,6 +343,161 @@
     }
   }
 
+  /* ---- new-chat workspace / Git branch controls ---- */
+
+  function readRecentCwd() {
+    try { return localStorage.getItem(LAST_CWD_KEY); } catch (_) { return null; }
+  }
+
+  function rememberCwd(cwd) {
+    if (typeof cwd !== 'string' || !cwd.trim()) return;
+    try { localStorage.setItem(LAST_CWD_KEY, cwd); } catch (_) { /* storage unavailable */ }
+  }
+
+  function clearDraftContextError() {
+    const error = $('#draft-context-error');
+    if (!error) return;
+    error.textContent = '';
+    error.hidden = true;
+  }
+
+  function setDraftContextError(message) {
+    const error = $('#draft-context-error');
+    if (!error) return;
+    error.textContent = String(message || T('workspace.branch_failed', '브랜치를 전환하지 못했습니다.'));
+    error.hidden = false;
+  }
+
+  function setDraftBranchOptions(info, preferred) {
+    const select = $('#draft-branch-select');
+    if (!select) return;
+    select.textContent = '';
+    const branches = Array.isArray(info?.branches) ? info.branches : [];
+    const none = document.createElement('option');
+    none.value = '';
+    none.textContent = T('workspace.none', '없음');
+    select.append(none);
+    for (const branch of branches) {
+      const option = document.createElement('option');
+      option.value = branch;
+      option.textContent = branch;
+      select.append(option);
+    }
+    const wanted = branches.includes(preferred)
+      ? preferred
+      : branches.includes(info?.current) ? info.current : '';
+    select.value = wanted;
+    draftBranch = wanted || null;
+    select.disabled = !info?.isRepository || !branches.length;
+    select.title = select.disabled
+      ? T('workspace.branch_unavailable', '이 프로젝트에는 선택할 브랜치가 없습니다')
+      : T('workspace.branch_title', '첫 메시지를 보낼 때 사용할 로컬 브랜치');
+  }
+
+  async function loadDraftGitInfo(cwd, preferredBranch) {
+    const request = ++draftInfoRequest;
+    const select = $('#draft-branch-select');
+    if (select) {
+      select.textContent = '';
+      const loading = document.createElement('option');
+      loading.textContent = T('common.loading', '불러오는 중…');
+      select.append(loading);
+      select.disabled = true;
+    }
+    let info = { isRepository: false, current: null, branches: [] };
+    try {
+      if (cwd && typeof window.kimi?.getGitInfo === 'function') {
+        info = await window.kimi.getGitInfo(cwd);
+      }
+    } catch (err) {
+      console.warn('getGitInfo failed', err);
+    }
+    if (request !== draftInfoRequest || App.state.activeId) return;
+    draftGitInfo = info;
+    setDraftBranchOptions(info, preferredBranch);
+  }
+
+  async function prepareDraftContext() {
+    const wrap = $('#draft-context');
+    if (!wrap || App.state.activeId) return;
+    wrap.hidden = false;
+    clearDraftContextError();
+    draftCwd = readRecentCwd();
+    draftBranch = null;
+    draftGitInfo = null;
+    const value = $('#draft-directory-value');
+    if (value) {
+      value.textContent = draftCwd || T('workspace.choose_project', '프로젝트 디렉터리 선택');
+      value.title = draftCwd || T('workspace.choose_project', '프로젝트 디렉터리 선택');
+    }
+    await loadDraftGitInfo(draftCwd);
+  }
+
+  async function chooseDraftDirectory() {
+    if (App.state.activeId) return;
+    clearDraftContextError();
+    let cwd = null;
+    try {
+      cwd = await window.kimi.pickDirectory(draftCwd || readRecentCwd());
+    } catch (err) {
+      setDraftContextError(err?.message || String(err));
+      return;
+    }
+    if (!cwd || App.state.activeId) return;
+    draftCwd = cwd;
+    draftBranch = null;
+    draftGitInfo = null;
+    const value = $('#draft-directory-value');
+    if (value) {
+      value.textContent = cwd;
+      value.title = cwd;
+    }
+    await loadDraftGitInfo(cwd);
+  }
+
+  async function updateBranchIndicator(session) {
+    const indicator = $('#branch-indicator');
+    if (!indicator) return;
+    const request = ++branchInfoRequest;
+    const draft = !session || !App.state.activeId;
+    $('#draft-context').hidden = !draft;
+    if (draft) {
+      indicator.hidden = true;
+      return;
+    }
+
+    indicator.hidden = false;
+    indicator.classList.add('unavailable');
+    indicator.textContent = '';
+    const label = document.createElement('span');
+    label.className = 'branch-indicator-label';
+    label.textContent = T('workspace.branch', '브랜치');
+    const value = document.createElement('span');
+    value.className = 'branch-indicator-value';
+    value.textContent = T('common.loading', '불러오는 중…');
+    indicator.append(label, value);
+
+    let info = { isRepository: false, current: null, branches: [] };
+    try {
+      if (session.cwd && typeof window.kimi?.getGitInfo === 'function') {
+        info = await window.kimi.getGitInfo(session.cwd);
+      }
+    } catch (err) {
+      console.warn('getGitInfo failed', err);
+    }
+    if (request !== branchInfoRequest || App.state.activeId !== session.id) return;
+    const branch = info?.current || T('workspace.none', '없음');
+    value.textContent = branch;
+    indicator.classList.toggle('unavailable', !info?.current);
+    indicator.title = info?.current
+      ? T('workspace.current_branch', '현재 작업 브랜치') + ': ' + branch
+      : T('workspace.branch_unavailable', '이 프로젝트에는 선택할 브랜치가 없습니다');
+    indicator.setAttribute(
+      'aria-label',
+      T('workspace.current_branch', '현재 작업 브랜치') + ': ' + branch,
+    );
+  }
+
   /* ---- header / composer helpers ---- */
 
   function updateChatHeader() {
@@ -308,6 +506,7 @@
     // The v2 model pill (ChatOptions) owns model display; #model-label is the
     // v1 fallback, kept empty while the pill exists to avoid showing it twice.
     $('#model-label').textContent = window.ChatOptions ? '' : App.state.defaultModel || '';
+    void updateBranchIndicator(session);
   }
 
   /**
@@ -377,18 +576,24 @@
 
   /* ---- update status dot on #settings-btn ---- */
 
-  function setUpdateDot(show, version) {
+  function setUpdateDot(show, version, status) {
     updateReady = !!show;
     if (version) updateVersion = version;
+    if (status) updateStatus = status;
+    if (!show) updateStatus = null;
     const dot = $('#settings-update-dot');
     if (dot) dot.hidden = !updateReady;
     const btn = $('#settings-btn');
     if (!btn) return;
     btn.classList.toggle('has-update', updateReady);
-    btn.title = updateReady
-      ? T('update.ready_title', '업데이트 준비됨 — 설정에서 다시 시작하여 적용') +
-        (version ? ` (v${version})` : '')
-      : T('settings.open_title', '설정');
+    if (!updateReady) {
+      btn.title = T('settings.open_title', '설정');
+      return;
+    }
+    const titleKey = updateStatus === 'downloaded'
+      ? ['update.ready_title', '업데이트 준비됨. 설정에서 다시 시작하여 적용']
+      : ['update.available_title', '새 앱 업데이트가 있습니다'];
+    btn.title = T(titleKey[0], titleKey[1]) + (updateVersion ? ` (v${updateVersion})` : '');
   }
 
   /* ---- push-event dispatch (window.kimi.onEvent) ---- */
@@ -419,7 +624,12 @@
         safeCall(() => window.Onboarding?.handleEvent?.(msg));
         break;
       case 'update':
-        if (msg.status === 'downloaded') setUpdateDot(true, msg.version);
+        safeCall(() => window.UpdatePrompt?.handleEvent?.(msg));
+        if (['available', 'downloading', 'downloaded'].includes(msg.status)) {
+          setUpdateDot(true, msg.version, msg.status);
+        } else if (msg.status === 'none') {
+          setUpdateDot(false);
+        }
         break;
     }
   }
@@ -448,11 +658,17 @@
 
   function wireChrome() {
     $('#new-chat-btn').addEventListener('click', () => App.startNewChat());
+    $('#draft-directory-btn')?.addEventListener('click', () => void chooseDraftDirectory());
+    $('#draft-branch-select')?.addEventListener('change', (event) => {
+      draftBranch = event.currentTarget.value || null;
+      clearDraftContextError();
+    });
     $('#usage-nav-btn').addEventListener('click', () => {
       App.showView(App.state.view === 'usage' ? 'chat' : 'usage');
     });
-    // NOTE: #composer / #send-btn are owned by chat.js (optimistic echo, busy
-    // lock/stop-mode, autoresize). Binding them here too would double-send.
+    // NOTE: composer send/steer/abort controls are owned by chat.js
+    // (optimistic echo, busy state, autoresize). Binding them here too would
+    // double-send.
     // Retry must actually relaunch the engine: a dead cli daemon does not come
     // back from a plain reload (nothing re-launches it), so ask the backend to
     // re-init first (no-op fast path for the direct engine), then reload.
@@ -627,6 +843,7 @@
     );
     if (sorted.length) await App.selectSession(sorted[0].id);
     else App.startNewChat();
+    safeCall(() => window.CliConnectPrompt?.show?.(state));
   }
 
   void boot();

@@ -207,7 +207,7 @@
   /* ---- swarm toggle ---- */
 
   function swarmEnabled(sid) {
-    if (!sid) return false; // draft chat: app.js applies the default on create
+    if (!sid) return lsGet(LS_DEFAULT_SWARM) === '1';
     const stored = lsGet(LS_SWARM + sid);
     if (stored === '1' || stored === '0') return stored === '1';
     // v4: fresh session with no per-session value — seed from the settings
@@ -225,29 +225,57 @@
     );
   }
 
+  function renderSwarmState(on) {
+    if (!swarmBtn) return;
+    swarmBtn.textContent = '';
+    const label = document.createElement('span');
+    label.className = 'swarm-label';
+    label.textContent = T('options.swarm.label', '스웜');
+    const state = document.createElement('span');
+    state.className = 'swarm-state';
+    state.textContent = on
+      ? T('options.swarm.on', 'ON')
+      : T('options.swarm.off', 'OFF');
+    swarmBtn.append(label, state);
+    swarmBtn.classList.toggle('on', on);
+    swarmBtn.classList.toggle('off', !on);
+  }
+
   function updateSwarm(sid) {
     if (!swarmBtn || swarmBtn.hidden) return;
-    if (!swarmBtn.textContent.trim()) swarmBtn.textContent = T('options.swarm.label', '스웜');
     // v4: engine without swarm (direct) — inert pill, explanatory title.
     if (!swarmAvailable()) {
       swarmBtn.classList.add('disabled');
-      swarmBtn.classList.remove('on');
+      renderSwarmState(false);
       swarmBtn.setAttribute('aria-disabled', 'true');
       swarmBtn.setAttribute('aria-pressed', 'false');
       swarmBtn.title = T('options.swarm.unavailable', '스웜은 CLI 에이전트 모드에서 사용할 수 있습니다');
+      swarmBtn.setAttribute(
+        'aria-label',
+        T('options.swarm.label', '스웜') + ' ' + T('options.swarm.off', 'OFF'),
+      );
       return;
     }
     swarmBtn.classList.remove('disabled');
     swarmBtn.removeAttribute('aria-disabled');
     const on = swarmEnabled(sid);
-    swarmBtn.classList.toggle('on', on);
+    renderSwarmState(on);
     swarmBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
-    swarmBtn.title = T('options.swarm.title', '스웜 — 병렬 서브에이전트로 탐색/작업');
+    const stateText = on ? T('options.swarm.on', 'ON') : T('options.swarm.off', 'OFF');
+    swarmBtn.title =
+      T('options.swarm.title', '스웜 — 병렬 서브에이전트로 탐색/작업') + ` · ${stateText}`;
+    swarmBtn.setAttribute('aria-label', T('options.swarm.label', '스웜') + ' ' + stateText);
   }
 
   async function toggleSwarm() {
     const sid = activeSessionId();
-    if (!sid || !swarmAvailable()) return;
+    if (!swarmAvailable()) return;
+    if (!sid) {
+      const nextDefault = !swarmEnabled(null);
+      lsSet(LS_DEFAULT_SWARM, nextDefault ? '1' : '0');
+      updateSwarm(null);
+      return;
+    }
     const next = !swarmEnabled(sid);
     lsSet(LS_SWARM + sid, next ? '1' : '0'); // optimistic
     updateSwarm(sid);

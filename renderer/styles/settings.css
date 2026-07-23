@@ -321,23 +321,34 @@
   color: var(--text-dim);
 }
 
-/* ---- Chat header: swarm toggle (switch-pill) ---- */
-
-#swarm-toggle::before {
-  content: '';
-  flex: none;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--text-dim);
-}
+/* ---- Composer options: swarm toggle with explicit state ---- */
 
 #swarm-toggle.on {
   color: var(--accent);
   background: var(--accent-soft);
 }
 
-#swarm-toggle.on::before {
+#swarm-toggle.off {
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+}
+
+#swarm-toggle .swarm-state {
+  min-width: 24px;
+  margin-left: 1px;
+  padding: 2px 5px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  text-align: center;
+  color: var(--text-dim);
+  background: var(--active-bg);
+}
+
+#swarm-toggle.on .swarm-state {
+  color: var(--accent-text);
   background: var(--accent);
 }
 
@@ -491,7 +502,7 @@
    ========================================================================== */
 
 #composer-options .pill.disabled {
-  opacity: 0.45;
+  opacity: 0.68;
   cursor: not-allowed;
 }
 
@@ -506,16 +517,103 @@
 
 
 /* ==========================================================================
-   context meter in the composer options row (v5): parked at the row's right
-   edge; the pill look comes from components.css (#context-meter).
+   New-chat workspace + current-branch / change-summary chrome.
    ========================================================================== */
-#composer-options #context-meter {
-  margin-left: auto;
+
+#draft-context,
+#composer-change-status {
+  flex: 1 1 100%;
+  min-width: 0;
 }
 
-/* File-change summary (v8): a compact Codex-style review entry point at the
-   right side of the composer options row. */
-#composer-options #changes-summary-btn {
+#draft-context {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 0 var(--space-2);
+  border-bottom: 0.5px solid var(--border);
+}
+
+.draft-context-control {
+  min-width: 0;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 9px;
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius-m);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+}
+
+button.draft-context-control {
+  flex: 1 1 58%;
+  text-align: left;
+}
+
+button.draft-context-control:hover {
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--border));
+  background: var(--hover-bg);
+}
+
+#draft-branch-control {
+  flex: 1 1 42%;
+}
+
+.draft-context-label {
+  flex: none;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.draft-context-value {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#draft-branch-select {
+  min-width: 0;
+  width: 100%;
+  padding: 0;
+  overflow: hidden;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 11px;
+  text-overflow: ellipsis;
+}
+
+#draft-branch-select:disabled {
+  color: var(--text-dim);
+  opacity: 1;
+}
+
+#draft-context-error {
+  flex: 1 1 100%;
+  font-size: 11px;
+  color: var(--danger);
+}
+
+#draft-context:has(#draft-context-error:not([hidden])) {
+  flex-wrap: wrap;
+}
+
+#composer-change-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-bottom: 1px;
+}
+
+/* File-change summary (v8): centered immediately above the prompt input. */
+#composer-change-status #changes-summary-btn {
   flex: none;
   min-width: 0;
   height: 24px;
@@ -534,25 +632,17 @@
   cursor: pointer;
 }
 
-#composer-options #changes-summary-btn[hidden] {
+#composer-change-status #changes-summary-btn[hidden] {
   display: none;
 }
 
-#composer-options #changes-summary-btn:not([hidden]) {
-  margin-left: auto;
-}
-
-#composer-options #changes-summary-btn:not([hidden]) + #context-meter {
-  margin-left: 0;
-}
-
-#composer-options #changes-summary-btn:hover {
+#composer-change-status #changes-summary-btn:hover {
   border-color: color-mix(in srgb, var(--accent) 38%, var(--border));
   background: var(--hover-bg);
   color: var(--text);
 }
 
-#composer-options #changes-summary-btn:active {
+#composer-change-status #changes-summary-btn:active {
   transform: scale(0.98);
   background: var(--active-bg);
 }
@@ -568,8 +658,68 @@
   font-size: 14px;
 }
 
+#branch-indicator {
+  flex: none;
+  min-width: 0;
+  max-width: 220px;
+  height: 24px;
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 8px;
+  border: 0.5px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+#branch-indicator.unavailable {
+  color: var(--text-dim);
+}
+
+.branch-indicator-label {
+  flex: none;
+  color: var(--text-dim);
+}
+
+.branch-indicator-value {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-weight: 500;
+  text-overflow: ellipsis;
+}
+
+#branch-indicator.unavailable .branch-indicator-value {
+  color: var(--text-dim);
+  font-weight: 400;
+}
+
+#branch-indicator[hidden] + #context-meter {
+  margin-left: auto;
+}
+
 @media (max-width: 640px) {
   .changes-summary-label {
     max-width: 92px;
+  }
+
+  #draft-context {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  button.draft-context-control,
+  #draft-branch-control {
+    flex: none;
+    width: 100%;
+  }
+
+  #branch-indicator {
+    max-width: 132px;
   }
 }
