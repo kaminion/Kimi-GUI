@@ -106,6 +106,12 @@
           </button>
         </header>
         <div id="transcript"></div>
+        <!-- Conversation-level change totals sit above and outside the prompt
+             card. Selecting the summary opens the shared Changes panel. -->
+        <div id="composer-change-status" hidden>
+          <button id="changes-summary-btn" type="button" hidden
+                  title="Review file changes" aria-label="Review file changes"></button>
+        </div>
         <div id="composer-wrap">
           <!-- Only visible before the first prompt of a new conversation. The
                last project is restored by app.js; Git branches are local-only. -->
@@ -122,12 +128,6 @@
               </select>
             </label>
             <span id="draft-context-error" role="alert" hidden></span>
-          </div>
-          <!-- During a conversation, Codex-style change totals occupy the
-               centered status line immediately above the prompt. -->
-          <div id="composer-change-status" hidden>
-            <button id="changes-summary-btn" type="button" hidden
-                    title="Review file changes" aria-label="Review file changes"></button>
           </div>
           <textarea id="composer" rows="1" placeholder="Type a message…" aria-label="Message input"
                     data-i18n-placeholder="chat.composer_placeholder" data-i18n-aria="chat.composer_aria"></textarea>

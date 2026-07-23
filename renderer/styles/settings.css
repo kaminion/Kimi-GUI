@@ -768,8 +768,7 @@
    New-chat workspace + current-branch / change-summary chrome.
    ========================================================================== */
 
-#draft-context,
-#composer-change-status {
+#draft-context {
   flex: 1 1 100%;
   min-width: 0;
 }
@@ -854,13 +853,21 @@ button.draft-context-control:hover {
 }
 
 #composer-change-status {
+  flex: none;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding-bottom: 1px;
+  width: calc(100% - var(--space-5));
+  max-width: 800px;
+  min-height: 24px;
+  margin: 0 auto var(--space-1);
 }
 
-/* File-change summary (v8): centered immediately above the prompt input. */
+#composer-change-status[hidden] {
+  display: none;
+}
+
+/* Conversation-level file-change summary, separated from the prompt card. */
 #composer-change-status #changes-summary-btn {
   flex: none;
   min-width: 0;
