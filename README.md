@@ -1,4 +1,4 @@
-# Kimi-GUI [![Version](https://img.shields.io/badge/version-0.6.5-blue)](./package.json) [![Commit Activity](https://img.shields.io/github/commit-activity/m/kaminion/Kimi-GUI)](https://github.com/kaminion/Kimi-GUI/graphs/commit-activity) [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey)](#requirements)
+# Kimi-GUI [![Version](https://img.shields.io/badge/version-0.6.6-blue)](./package.json) [![Commit Activity](https://img.shields.io/github/commit-activity/m/kaminion/Kimi-GUI)](https://github.com/kaminion/Kimi-GUI/graphs/commit-activity) [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey)](#requirements)
 
 [Kimi Code](https://www.kimi.com/code/) | [Usage guide](./docs/kimi-code-made-easier.md) | [GitHub](https://github.com/kaminion/Kimi-GUI) | [한국어](./README.ko.md)
 
@@ -69,9 +69,14 @@ lines. Select it to open the **Changes** tab, inspect each diff, then switch to
 
 ### Manage Skills and CLI commands
 
-Open **Settings → Skills** to add a folder containing `SKILL.md` or a single
-Markdown Skill. Install it for your user or the active project, temporarily
-disable it without losing the files, or move it to the operating system Trash.
+Select **Skills** in the main sidebar to open the focused library. Choose
+**All projects** or **Current project**, then add a folder containing
+`SKILL.md`, add a single Markdown Skill, temporarily disable one without
+losing its files, or move it to the operating system Trash.
+
+If you would rather describe the workflow than author `SKILL.md` yourself,
+select **Ask Kimi to add one**. Kimi-GUI opens a new conversation with an
+editable, scope-aware Skill request template.
 
 In CLI agent mode, type `/` in the prompt to search Kimi CLI commands and
 enabled Skills. Use the arrow keys to move, `Tab` or `Enter` to complete, and
@@ -147,11 +152,14 @@ built-in, user, and project Skills as they are discovered.
 
 ### Agent Skills
 
-The visual Skills manager follows the discovery locations supported by Kimi
-Code CLI. It can install user Skills under `~/.config/agents/skills` and
-project Skills under `<project>/.agents/skills`, while also listing compatible
-Kimi, Claude, Codex, and Agents roots. Enable/disable operations preserve each
-Skill in an adjacent disabled directory, and removal uses the system Trash.
+The main-sidebar Skills manager follows the discovery locations supported by
+Kimi Code CLI. It can install Skills for **All projects** under
+`~/.config/agents/skills` and for the **Current project** under
+`<project>/.agents/skills`, while also listing compatible Kimi, Claude, Codex,
+and Agents roots. Enable/disable operations preserve each Skill in an adjacent
+disabled directory, and removal uses the system Trash. **Ask Kimi to add one**
+starts a new conversation with the correct destination and authoring
+requirements already filled in.
 
 ### Agent activity and usage
 

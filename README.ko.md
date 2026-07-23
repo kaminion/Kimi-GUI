@@ -1,6 +1,6 @@
 # Kimi-GUI
 
-![version](https://img.shields.io/badge/version-0.6.5-blue)
+![version](https://img.shields.io/badge/version-0.6.6-blue)
 ![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey)
 ![Electron](https://img.shields.io/badge/Electron-43-47848F?logo=electron&logoColor=white)
 ![made with](https://img.shields.io/badge/made%20with-vanilla%20JS%20%28no%20bundler%29-yellow)
@@ -76,9 +76,11 @@ Kimi 서버가 미리 실행되지 않은 컴퓨터도 함께 처리하세요.
 두 엔진과 전체 작업 흐름은 [사용 가이드](docs/kimi-code-made-easier.md)에서
 스크린샷과 함께 볼 수 있습니다.
 
-설정의 **Skills**에서 `SKILL.md`가 있는 폴더나 단일 Markdown Skill을
-사용자 또는 현재 프로젝트에 추가할 수 있습니다. 파일을 잃지 않고
-활성화/비활성화할 수 있으며, 삭제 시 운영체제 휴지통으로 이동합니다.
+메인 사이드바의 **Skills**에서 전용 관리 화면을 엽니다. **모든 프로젝트**
+또는 **현재 프로젝트**를 선택해 `SKILL.md`가 있는 폴더나 단일 Markdown
+Skill을 추가하고, 파일을 잃지 않은 채 활성화/비활성화하거나 운영체제
+휴지통으로 이동할 수 있습니다. **Kimi에게 추가 부탁하기**를 누르면 선택한
+범위에 맞는 Skill 작성 템플릿이 채워진 새 대화로 이동합니다.
 
 CLI 에이전트 모드에서는 입력창에 `/`를 입력하면 Kimi CLI 명령과 활성화된
 Skills가 자동완성 목록에 표시됩니다. 방향키로 이동하고 `Tab` 또는 `Enter`로
@@ -135,11 +137,14 @@ ON/OFF`(CLI 에이전트 모드), 사고 수준(끄기/낮음/높음/최대)을 
 
 ### Agent Skills와 슬래시 명령
 
-시각적 Skills 관리자는 Kimi Code CLI가 지원하는 검색 위치를 따릅니다.
-사용자 Skill은 `~/.config/agents/skills`, 프로젝트 Skill은
+메인 사이드바의 시각적 Skills 관리자는 Kimi Code CLI가 지원하는 검색
+위치를 따릅니다. **모든 프로젝트** Skill은
+`~/.config/agents/skills`, **현재 프로젝트** Skill은
 `<project>/.agents/skills`에 추가하며 Kimi, Claude, Codex, Agents 호환
 위치도 함께 표시합니다. 활성화 상태 변경은 인접한 비활성 디렉터리로
-안전하게 이동하고, 삭제는 운영체제 휴지통을 사용합니다.
+안전하게 이동하고, 삭제는 운영체제 휴지통을 사용합니다. 직접 파일을
+작성하는 대신 **Kimi에게 추가 부탁하기**로 범위에 맞는 작성 요청을 새
+대화에서 바로 편집할 수도 있습니다.
 
 CLI 에이전트 모드의 슬래시 자동완성은 Kimi Code 웹 UI 호환 명령과 현재
 발견된 내장·사용자·프로젝트 Skills를 함께 검색합니다. 접두어뿐 아니라

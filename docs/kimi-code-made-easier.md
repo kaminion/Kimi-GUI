@@ -67,15 +67,20 @@ sessions created by Kimi Code CLI.
 
 ## Bring your own Agent Skills
 
-Open **Settings → Skills** to manage the repeatable instructions Kimi Code can
-load for a task. Add a folder containing `SKILL.md` or a single Markdown Skill,
-then choose whether it belongs to your user account or the current project.
+Select **Skills** in the main sidebar to manage the repeatable instructions
+Kimi Code can load for a task. Choose **All projects** or **Current project**,
+then add a folder containing `SKILL.md` or a single Markdown Skill.
+
+Select **Ask Kimi to add one** when you want Kimi to author the Skill. Kimi-GUI
+opens a new conversation with an editable request template that includes the
+selected destination, expected `SKILL.md` structure, safety conditions, and
+usage documentation.
 
 Each Skill has an explicit enabled state. Disabling a Skill preserves it on
 disk so you can turn it back on later. Removing a Skill sends it to the
 operating system Trash instead of permanently deleting it.
 
-![The Skills manager showing user and project Skills with enabled and disabled states](https://raw.githubusercontent.com/kaminion/Kimi-GUI/main/docs/media/release-0.6.5-skills-manager.png)
+![The focused Skills manager with an Ask Kimi action and clear availability choices](https://raw.githubusercontent.com/kaminion/Kimi-GUI/main/docs/media/release-0.6.6-skills-main.png)
 
 Changes are guaranteed to be picked up by new chats. This makes it practical
 to keep a small library of review checklists, release procedures, or
