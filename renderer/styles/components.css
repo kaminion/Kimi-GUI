@@ -1676,3 +1676,111 @@
   border-left: 2px solid var(--success);
   color: var(--success);
 }
+
+/* ==========================================================================
+   Process block (v7) — unified "사고 과정" per assistant turn: one
+   <details class="msg-process"> wrapping the thinking prose and the v6 tool
+   rows. Header: .process-status (spinner while .running, dim dot when done),
+   .msg-process-chevron, .msg-process-title (live activity / done summary),
+   .msg-process-meta (dim tool count). Thinking-block-like: left hairline,
+   dim voice, small radius. Token-only colors, so the light theme follows
+   via the same custom properties — no scoped overrides needed.
+   ========================================================================== */
+
+.msg-process {
+  margin-bottom: var(--space-2);
+  padding-left: 12px;
+  border-left: 2px solid var(--border);
+  border-radius: var(--radius-s);
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.msg-process-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+  list-style: none;
+  user-select: none;
+  cursor: default;
+}
+
+.msg-process-header::-webkit-details-marker {
+  display: none;
+}
+
+/* Live spinner while running; a dim static dot once the turn is done. */
+.process-status {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  opacity: 0.45;
+}
+
+.msg-process.running .process-status {
+  background: none;
+  border: 1.5px solid var(--accent-soft);
+  border-top-color: var(--accent);
+  opacity: 1;
+  animation: tool-spin 0.8s linear infinite;
+}
+
+.msg-process-chevron {
+  flex: none;
+  font-size: 9px;
+  line-height: 1;
+  color: var(--text-dim);
+  transition: transform 0.15s var(--ease-out);
+}
+
+.msg-process[open] .msg-process-chevron {
+  transform: rotate(90deg);
+}
+
+.msg-process-title {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-secondary);
+}
+
+.msg-process.running .msg-process-title {
+  color: var(--text);
+}
+
+.msg-process-meta {
+  flex: none;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.msg-process-body {
+  padding: var(--space-1) 0 var(--space-2);
+}
+
+/* Thinking prose inside the block: the dim italic voice of .msg-thinking. */
+.msg-process-thinking {
+  margin: var(--space-1) 0 var(--space-2);
+  font-style: italic;
+  overflow-wrap: anywhere;
+}
+
+.msg-process-thinking .md {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+/* Tool steps pack tighter inside the block than top-level rows. */
+.msg-process-body .msg-tool {
+  margin: 0 0 var(--space-1);
+}
+
+.msg-process-body .msg-tool:last-child {
+  margin-bottom: 0;
+}

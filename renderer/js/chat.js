@@ -41,6 +41,19 @@
  * trimmed to ~4KB) instead of a raw JSON dump. A text part that is entirely
  * one raw tool-invocation JSON blob (leaked function call) is converted to a
  * tool row rather than rendered inline.
+ *
+ * v7 (process block): each assistant message renders as one collapsible
+ * <details class="msg-process"> ("사고 과정") holding the thinking content and
+ * the v6 tool rows in chronological order, followed by the markdown answer.
+ * While the turn runs the header shows a spinner + live activity ('생각하는
+ * 중…' / '<Tool> 실행 중…' / '작업하는 중…') and the block auto-opens; at turn
+ * end it auto-closes unless the user took control of the disclosure. Live
+ * turns (id-less turnId deltas + tool.call.started/tool.result frames) update
+ * the same block in real time; turn.ended still triggers the authoritative
+ * REST resync. Machine-only context appends (origin.kind injection /
+ * skill_activation / task / background_task, or text starting with
+ * '<system-reminder' / '<notification' / skill-wrapper blobs) are dropped
+ * from the transcript entirely.
  */
 (function () {
   'use strict';
@@ -58,13 +71,14 @@
   // NOTE: turn.ended / prompt.completed / prompt.aborted are NOT ignored — they
   // trigger an authoritative REST resync, because live turns stream deltas
   // without message_id and no event.message.* frames are emitted (verified
-  // against kimi 0.28.1).
+  // against kimi 0.28.1). v7: turn.started / tool.call.started / tool.result
+  // are NOT ignored either — they drive the live process block.
   const IGNORE_TYPES = new Set([
     'session.created', 'session.updated', 'session.deleted', 'session.meta.updated',
     'session.usage_updated', 'agent.status.updated', 'context.spliced',
-    'turn.started', 'turn.step.started', 'turn.step.completed',
+    'turn.step.started', 'turn.step.completed',
     'turn.step.retrying', 'turn.step.interrupted',
-    'tool.call.delta', 'tool.call.started', 'tool.progress', 'tool.result',
+    'tool.call.delta', 'tool.progress',
     'tool.list.updated', 'mcp.server.status',
     'shell.output', 'shell.started', 'shell.completed',
     'subagent.spawned', 'subagent.started', 'subagent.suspended',
@@ -91,7 +105,8 @@
   let activeSessionId = null;
   let messages = [];                    // normalized cache of the rendered session
   const streamNodes = new Map();        // messageId -> true for in-progress assistant rows
-  const liveStreams = new Map();        // turnId -> { row, thinking, text } for id-less deltas
+  const liveStreams = new Map();        // turnId -> live process-block state for id-less deltas
+  const processIntent = new Map();      // messageId -> 'open'|'closed' (user disclosure intent)
   let optimisticUser = null;            // { text, el } echoed locally until server confirms
   let busy = false;
   let readOnly = false;                 // foreign-engine session: composer locked, notice shown
@@ -187,6 +202,9 @@
       content: content.map(normPart),
       status: m.status,
       created_at: m.created_at ?? m.createdAt,
+      // Machine-content filtering (v7): REST wire carries metadata.origin
+      // ({kind:'injection'|'task'|...}); the local replay may attach origin.
+      origin: m.origin ?? (m.metadata && m.metadata.origin) ?? null,
     };
   }
 
@@ -264,6 +282,24 @@
 
   function textOfMessage(m) {
     return m.content.filter((p) => p.type === 'text').map((p) => p.text).join('\n').trim();
+  }
+
+  // ---- machine-content filtering (v7) ---------------------------------------
+  // Machine-only context appends never surface in the transcript: CLI
+  // injections (<system-reminder>), task notifications (<notification …>),
+  // and skill-wrapper blobs. Detected by origin.kind when the shape carries
+  // it, else by the well-known text prefixes (user-role only, so genuine
+  // assistant prose quoting such text is never eaten). Genuine user/system
+  // notes (error notes, send-failed) are renderer-local and unaffected.
+  const MACHINE_ORIGINS = new Set(['injection', 'skill_activation', 'task', 'background_task']);
+
+  function isMachineMessage(m) {
+    const kind = m.origin && m.origin.kind;
+    if (kind && MACHINE_ORIGINS.has(kind)) return true;
+    if (m.role !== 'user') return false;
+    const t = textOfMessage(m).trimStart();
+    return t.startsWith('<system-reminder') || t.startsWith('<notification') ||
+      t.startsWith('<kimi-skill-loaded') || t.startsWith('Skill tool loaded instructions');
   }
 
   // Fallback header target for unknown tools: the first scalar (string /
@@ -441,14 +477,81 @@
     return { type: 'tool_use', tool_call_id: j.tool_call_id ?? j.id ?? '', tool_name: j.name, input };
   }
 
-  function buildThinking(details) {
-    const box = el('details', 'msg-thinking');
+  // ---- process block (v7) ----------------------------------------------------
+  // One collapsible "사고 과정" block per assistant turn: thinking content and
+  // v6 tool rows in chronological order. Done header: '사고 과정' + dim tool
+  // count; running header: live activity line (see updateLiveHeader).
+  function processToolCount(parts) {
+    return parts.filter((p) => p.type === 'tool_use').length;
+  }
+
+  // '도구 N개 사용' — the table strings hold a literal N placeholder swapped
+  // for the count (ko '도구 N개 사용' / en 'N tools used').
+  function setProcessHeaderDone(titleEl, metaEl, toolCount) {
+    titleEl.textContent = T('chat.thinking', '사고 과정');
+    metaEl.textContent = toolCount > 0
+      ? T('chat.process.tools_used', '도구 N개 사용').replace('N', toolCount)
+      : '';
+  }
+
+  function buildProcessShell(running) {
+    const box = el('details', 'msg-process' + (running ? ' running' : ''));
     const sum = document.createElement('summary');
-    sum.className = 'msg-thinking-header';
-    sum.textContent = T('chat.thinking', '사고 과정');
-    const body = el('div', 'msg-thinking-body');
-    body.innerHTML = mdRender(details);
+    sum.className = 'msg-process-header';
+    const status = el('span', 'process-status', '');
+    const chev = el('span', 'msg-process-chevron', '▸');
+    const title = el('span', 'msg-process-title', '');
+    const meta = el('span', 'msg-process-meta', '');
+    sum.append(status, chev, title, meta);
+    const body = el('div', 'msg-process-body');
     box.append(sum, body);
+    return { box, title, meta, body };
+  }
+
+  function appendProcessThinking(body, text) {
+    const div = el('div', 'msg-process-thinking');
+    const md = el('div', 'md');
+    md.innerHTML = mdRender(text);
+    div.append(md);
+    body.append(div);
+    return div;
+  }
+
+  // Activity line for a still-streaming (id-based) process block: the last
+  // unfinished tool wins, else thinking, else generic working.
+  function processActivityText(parts, results) {
+    for (let i = parts.length - 1; i >= 0; i--) {
+      const p = parts[i];
+      if (p.type === 'tool_use') {
+        if (!(p.tool_call_id && results.has(p.tool_call_id))) {
+          return (p.tool_name || 'tool') + ' ' + T('chat.process.tool_running', '실행 중…');
+        }
+      } else if (p.type === 'thinking') {
+        return T('chat.process.thinking', '생각하는 중…');
+      }
+    }
+    return T('chat.process.working', '작업하는 중…');
+  }
+
+  // History/id-stream block: open while running (unless the user closed it),
+  // collapsed when done (unless the user opened it) — processIntent rules.
+  function buildProcessBlock(parts, results, running, msgId) {
+    const { box, title, meta, body } = buildProcessShell(running);
+    for (const p of parts) {
+      if (p.type === 'thinking') {
+        appendProcessThinking(body, p.thinking);
+      } else if (p.type === 'tool_use') {
+        const result = p.tool_call_id ? results.get(p.tool_call_id) : undefined;
+        body.append(buildToolRow(p, result, running));
+      }
+    }
+    if (running) {
+      title.textContent = processActivityText(parts, results);
+      box.open = processIntent.get(msgId) !== 'closed';
+    } else {
+      setProcessHeaderDone(title, meta, processToolCount(parts));
+      box.open = processIntent.get(msgId) === 'open';
+    }
     return box;
   }
 
@@ -500,43 +603,53 @@
       }
       return;
     }
-    // assistant: blocks in part order
+    // assistant: one process block (thinking + tool steps, any position) plus
+    // the markdown answer text outside it; attachments keep their order.
+    const processParts = [];
+    const surface = []; // ordered {kind:'md'|'attach'} items rendered after the block
     let mdBuffer = '';
     const flushMd = () => {
       if (!mdBuffer.trim()) { mdBuffer = ''; return; }
-      const block = el('div', 'msg-assistant');
-      const md = el('div', 'md');
-      md.innerHTML = mdRender(mdBuffer);
-      block.append(md);
-      row.append(block);
+      surface.push({ kind: 'md', text: mdBuffer });
       mdBuffer = '';
     };
     for (const p of m.content) {
       if (p.type === 'text') {
         // Leaked function call (a whole text part that is one invocation JSON
-        // blob) renders as a tool row, not as inline JSON.
+        // blob) becomes a tool step in the block, not inline JSON.
         const raw = parseRawToolCall(p.text);
         if (raw) {
           flushMd();
-          const result = raw.tool_call_id ? results.get(raw.tool_call_id) : undefined;
-          row.append(buildToolRow(raw, result, streaming && streamNodes.get(m.id)));
+          processParts.push(raw);
         } else {
           mdBuffer += (mdBuffer ? '\n' : '') + p.text;
         }
       } else if (p.type === 'thinking') {
-        flushMd();
-        if (p.thinking && p.thinking.trim()) row.append(buildThinking(p.thinking));
+        if (p.thinking && p.thinking.trim()) processParts.push(p);
       } else if (p.type === 'tool_use') {
         flushMd();
-        const result = p.tool_call_id ? results.get(p.tool_call_id) : undefined;
-        row.append(buildToolRow(p, result, streaming && streamNodes.get(m.id)));
+        processParts.push(p);
       } else if (p.type === 'image' || p.type === 'file') {
         flushMd();
-        row.append(buildAttachment(p));
+        surface.push({ kind: 'attach', part: p });
       }
       // tool_result parts inside assistant messages are consumed via the map
     }
     flushMd();
+    if (processParts.length) {
+      row.append(buildProcessBlock(processParts, results, !!(streaming && streamNodes.get(m.id)), m.id));
+    }
+    for (const item of surface) {
+      if (item.kind === 'md') {
+        const block = el('div', 'msg-assistant');
+        const md = el('div', 'md');
+        md.innerHTML = mdRender(item.text);
+        block.append(md);
+        row.append(block);
+      } else {
+        row.append(buildAttachment(item.part));
+      }
+    }
     if (!row.childNodes.length) {
       // Empty streaming placeholder: keep the row alive for upcoming deltas.
       row.append(el('div', 'msg-assistant msg-pending', ''));
@@ -557,12 +670,18 @@
     const row = transcriptEl.querySelector('[data-message-id="' + (window.CSS ? CSS.escape(m.id) : m.id) + '"]');
     if (!row) { appendMessageNode(m); return; }
     const open = new Set();
-    row.querySelectorAll('details[open]').forEach((d, i) => {
+    // Index over ALL details (not just open ones) so keys stay stable when a
+    // closed details sits between open ones. The .msg-process block is
+    // excluded: its open state is driven by processIntent in buildProcessBlock.
+    const all = Array.from(row.querySelectorAll('details'));
+    all.forEach((d, i) => {
+      if (!d.open || d.classList.contains('msg-process')) return;
       const nameEl = d.querySelector('.msg-tool-name');
       open.add(nameEl ? 'tool:' + nameEl.textContent + ':' + i : 'idx:' + i);
     });
     fillMessage(row, m, collectResults(), busy);
-    row.querySelectorAll('details').forEach((d, i) => {
+    Array.from(row.querySelectorAll('details')).forEach((d, i) => {
+      if (d.classList.contains('msg-process')) return;
       const nameEl = d.querySelector('.msg-tool-name');
       if (open.has(nameEl ? 'tool:' + nameEl.textContent + ':' + i : 'idx:' + i)) d.open = true;
     });
@@ -605,7 +724,7 @@
         const list = await window.kimi.getMessages(activeSessionId);
         if (Array.isArray(list)) {
           optimisticUser = null;
-          messages = sortByTime(list.map(normMessage));
+          messages = sortByTime(list.map(normMessage).filter((m) => !isMachineMessage(m)));
           fullRedraw();
           maybeScroll();
         }
@@ -615,35 +734,165 @@
 
   // ---- live (id-less) delta streaming -----------------------------------------
   // Live turns stream assistant.delta/thinking.delta keyed only by turnId and
-  // emit no event.message.* frames; render those into a provisional row that
-  // the end-of-turn REST resync replaces with authoritative messages.
+  // emit no event.message.* frames; they render into a provisional row built
+  // around the same .msg-process block as history. turn.started opens the
+  // block, thinking/tool events update it in real time, and turn.ended (or
+  // the busy flip) settles it: done header + auto-close unless the user
+  // toggled the disclosure. The end-of-turn REST resync then replaces the
+  // provisional row with authoritative messages.
+  function findLiveByRow(row) {
+    for (const ls of liveStreams.values()) if (ls.row === row) return ls;
+    return null;
+  }
+
+  function setLiveOpen(ls, open) {
+    ls.block.open = open;
+  }
+
+  // Header while running: spinner + activity line; settled: static summary.
+  function updateLiveHeader(ls) {
+    if (ls.settled) {
+      setProcessHeaderDone(ls.titleEl, ls.metaEl, ls.tools.size);
+      return;
+    }
+    ls.metaEl.textContent = '';
+    if (ls.activity === 'tool' && ls.toolName) {
+      ls.titleEl.textContent = ls.toolName + ' ' + T('chat.process.tool_running', '실행 중…');
+    } else if (ls.activity === 'thinking') {
+      ls.titleEl.textContent = T('chat.process.thinking', '생각하는 중…');
+    } else {
+      ls.titleEl.textContent = T('chat.process.working', '작업하는 중…');
+    }
+  }
+
+  function ensureLiveStream(key) {
+    let ls = liveStreams.get(key);
+    if (ls) return ls;
+    clearEmptyState();
+    const row = el('div', 'msg-row msg-live');
+    const { box, title, meta, body } = buildProcessShell(true);
+    box.open = true; // auto-open while the turn runs
+    const textWrap = el('div', 'msg-assistant');
+    const textMd = el('div', 'md');
+    textWrap.append(textMd);
+    row.append(box, textWrap);
+    transcriptEl.append(row);
+    ls = {
+      row, block: box, titleEl: title, metaEl: meta, bodyEl: body,
+      textMd, thinking: '', thinkMd: null, text: '',
+      tools: new Map(),          // toolCallId -> { part, rowEl, done }
+      activity: 'working', toolName: '',
+      userToggled: false, settled: false,
+    };
+    liveStreams.set(key, ls);
+    updateLiveHeader(ls);
+    return ls;
+  }
+
   function onLiveDelta(data, kind) {
     const delta = typeof data.delta === 'string' ? data.delta : '';
     if (!delta) return;
     const key = String(data.turnId ?? data.turn_id ?? 'live');
-    let ls = liveStreams.get(key);
-    if (!ls) {
-      clearEmptyState();
-      const row = el('div', 'msg-row msg-live');
-      transcriptEl.append(row);
-      ls = { row, thinking: '', text: '' };
-      liveStreams.set(key, ls);
+    const ls = ensureLiveStream(key);
+    if (kind === 'thinking') {
+      ls.thinking += delta;
+      if (!ls.thinkMd) {
+        const div = el('div', 'msg-process-thinking');
+        ls.thinkMd = el('div', 'md');
+        div.append(ls.thinkMd);
+        ls.bodyEl.append(div);
+      }
+      ls.thinkMd.innerHTML = mdRender(ls.thinking);
+      if (ls.activity !== 'tool') ls.activity = 'thinking';
+    } else {
+      ls.text += delta;
+      ls.textMd.innerHTML = mdRender(ls.text);
     }
-    if (kind === 'thinking') ls.thinking += delta; else ls.text += delta;
-    ls.row.innerHTML = '';
-    if (ls.thinking.trim()) ls.row.append(buildThinking(ls.thinking));
-    const block = el('div', 'msg-assistant');
-    const md = el('div', 'md');
-    md.innerHTML = mdRender(ls.text);
-    block.append(md);
-    ls.row.append(block);
+    updateLiveHeader(ls);
     maybeScroll();
+  }
+
+  function onTurnStarted(data) {
+    const key = String(data.turnId ?? data.turn_id ?? 'live');
+    const ls = ensureLiveStream(key);
+    if (!ls.settled) {
+      ls.activity = 'working';
+      updateLiveHeader(ls);
+      if (!ls.userToggled) setLiveOpen(ls, true);
+    }
+    maybeScroll();
+  }
+
+  // tool.call.started: {turnId, toolCallId, name, args} (cli) or
+  // {turn_id, tool_call_id, tool_name, args} (direct backend).
+  function onToolStarted(data) {
+    const key = String(data.turnId ?? data.turn_id ?? 'live');
+    const ls = ensureLiveStream(key);
+    const id = String(data.toolCallId ?? data.tool_call_id ?? '');
+    const part = {
+      type: 'tool_use',
+      tool_call_id: id,
+      tool_name: data.name ?? data.tool_name ?? 'tool',
+      input: data.args ?? data.input ?? null,
+    };
+    const rowEl = buildToolRow(part, null, true);
+    ls.tools.set(id, { part, rowEl, done: false });
+    ls.bodyEl.append(rowEl);
+    ls.activity = 'tool';
+    ls.toolName = part.tool_name;
+    updateLiveHeader(ls);
+    maybeScroll();
+  }
+
+  // tool.result: flips its step row to done/error (preserving disclosure),
+  // then the header falls back to the next running tool or generic working.
+  function onToolResult(data) {
+    const key = String(data.turnId ?? data.turn_id ?? 'live');
+    const ls = liveStreams.get(key);
+    if (!ls) return;
+    const id = String(data.toolCallId ?? data.tool_call_id ?? '');
+    const t = ls.tools.get(id);
+    if (!t) return; // result for a tool we never saw start: ignore
+    const result = {
+      type: 'tool_result',
+      tool_call_id: id,
+      output: data.output,
+      is_error: !!(data.is_error ?? data.isError),
+    };
+    const rowEl = buildToolRow(t.part, result, false);
+    if (t.rowEl.open) rowEl.open = true;
+    t.rowEl.replaceWith(rowEl);
+    t.rowEl = rowEl;
+    t.done = true;
+    let next = null;
+    for (const e of ls.tools.values()) { if (!e.done) next = e; }
+    if (next) {
+      ls.activity = 'tool';
+      ls.toolName = next.part.tool_name;
+    } else {
+      ls.activity = 'working';
+    }
+    updateLiveHeader(ls);
+    maybeScroll();
+  }
+
+  // Turn finished (or the busy flag dropped): settle every live block —
+  // done summary header, spinner off, auto-close unless the user toggled.
+  function settleLiveStreams() {
+    for (const ls of liveStreams.values()) {
+      if (ls.settled) continue;
+      ls.settled = true;
+      ls.block.classList.remove('running');
+      updateLiveHeader(ls);
+      if (!ls.userToggled) setLiveOpen(ls, false);
+    }
   }
 
   // ---- event handlers --------------------------------------------------------
   function onMessageCreated(raw) {
     const m = normMessage(raw && raw.message ? raw.message : raw);
     if (!m.id) return;
+    if (isMachineMessage(m)) return; // machine-only context append: never shown
     const existing = messages.find((x) => x.id === m.id);
     if (existing) { onMessageUpdated({ message_id: m.id, content: m.content, status: m.status }); return; }
     clearEmptyState();
@@ -732,6 +981,9 @@
       case 'message.updated': onMessageUpdated(data); break;
       case 'assistant.delta': onDelta(data, 'text'); break;
       case 'thinking.delta': onDelta(data, 'thinking'); break;
+      case 'turn.started': onTurnStarted(data); break;
+      case 'tool.call.started': onToolStarted(data); break;
+      case 'tool.result': onToolResult(data); break;
       case 'session.status_changed':
         setBusyFromStatus(data.status);
         // Status flip often accompanies the final message.updated; nothing else to do.
@@ -744,6 +996,7 @@
       case 'turn.ended':
       case 'prompt.completed':
       case 'prompt.aborted':
+        settleLiveStreams();
         setBusy(false);
         scheduleReload();
         break;
@@ -768,8 +1021,9 @@
     if (!initialized) return;
     refreshComposerUi();
     if (wasBusy && !busy) {
-      // Stream ended: settle any leftover running tool rows.
+      // Stream ended: settle any leftover running tool rows and live blocks.
       streamNodes.clear();
+      settleLiveStreams();
       for (const m of messages) {
         if (m.role === 'assistant' || m.role === 'tool') rerenderMessageNode(m);
       }
@@ -899,6 +1153,22 @@
     initialized = true;
     wireComposer();
     transcriptEl.addEventListener('scroll', () => { pinned = isPinned(); });
+    // User disclosure intent for process blocks: a click on the header records
+    // intent before the default toggle (box.open is still pre-toggle here), so
+    // auto-close at turn end and re-renders can respect it.
+    transcriptEl.addEventListener('click', (e) => {
+      const sum = e.target && e.target.closest ? e.target.closest('summary.msg-process-header') : null;
+      if (!sum) return;
+      const box = sum.parentElement;
+      const row = box.closest('.msg-row');
+      if (!row) return;
+      if (row.dataset.messageId) {
+        processIntent.set(row.dataset.messageId, box.open ? 'closed' : 'open');
+      } else {
+        const ls = findLiveByRow(row);
+        if (ls) ls.userToggled = true;
+      }
+    });
     pinned = true;
     renderEmptyState();
     refreshComposerUi();
@@ -911,7 +1181,8 @@
     if (reloadTimer) { clearTimeout(reloadTimer); reloadTimer = null; }
     optimisticUser = null;
     liveStreams.clear();
-    messages = sortByTime((Array.isArray(list) ? list : []).map(normMessage));
+    processIntent.clear();
+    messages = sortByTime((Array.isArray(list) ? list : []).map(normMessage).filter((m) => !isMachineMessage(m)));
     fullRedraw();
     pinned = true;
     scrollToBottom();
@@ -937,6 +1208,7 @@
     messages = [];
     streamNodes.clear();
     liveStreams.clear();
+    processIntent.clear();
     optimisticUser = null;
     readOnly = false;
     if (reloadTimer) { clearTimeout(reloadTimer); reloadTimer = null; }
