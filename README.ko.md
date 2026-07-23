@@ -1,6 +1,6 @@
 # Kimi-GUI
 
-![version](https://img.shields.io/badge/version-0.6.4-blue)
+![version](https://img.shields.io/badge/version-0.6.5-blue)
 ![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey)
 ![Electron](https://img.shields.io/badge/Electron-43-47848F?logo=electron&logoColor=white)
 ![made with](https://img.shields.io/badge/made%20with-vanilla%20JS%20%28no%20bundler%29-yellow)
@@ -76,6 +76,14 @@ Kimi 서버가 미리 실행되지 않은 컴퓨터도 함께 처리하세요.
 두 엔진과 전체 작업 흐름은 [사용 가이드](docs/kimi-code-made-easier.md)에서
 스크린샷과 함께 볼 수 있습니다.
 
+설정의 **Skills**에서 `SKILL.md`가 있는 폴더나 단일 Markdown Skill을
+사용자 또는 현재 프로젝트에 추가할 수 있습니다. 파일을 잃지 않고
+활성화/비활성화할 수 있으며, 삭제 시 운영체제 휴지통으로 이동합니다.
+
+CLI 에이전트 모드에서는 입력창에 `/`를 입력하면 Kimi CLI 명령과 활성화된
+Skills가 자동완성 목록에 표시됩니다. 방향키로 이동하고 `Tab` 또는 `Enter`로
+완성하며 `Esc`로 닫습니다. 완성만으로 명령이 실행되지는 않습니다.
+
 ## 주요 기능
 
 ### Kimi Code, `kimi web`, Kimi-GUI의 관계
@@ -124,6 +132,18 @@ ON/OFF`(CLI 에이전트 모드), 사고 수준(끄기/낮음/높음/최대)을 
 ### 사용량 화면
 
 오늘의 토큰 사용량과 최근 7일 일별 차트, 주간 및 5시간 롤링 한도 바, 세션별 토큰·컨텍스트 윈도우 사용량을 표시합니다.
+
+### Agent Skills와 슬래시 명령
+
+시각적 Skills 관리자는 Kimi Code CLI가 지원하는 검색 위치를 따릅니다.
+사용자 Skill은 `~/.config/agents/skills`, 프로젝트 Skill은
+`<project>/.agents/skills`에 추가하며 Kimi, Claude, Codex, Agents 호환
+위치도 함께 표시합니다. 활성화 상태 변경은 인접한 비활성 디렉터리로
+안전하게 이동하고, 삭제는 운영체제 휴지통을 사용합니다.
+
+CLI 에이전트 모드의 슬래시 자동완성은 Kimi Code 웹 UI 호환 명령과 현재
+발견된 내장·사용자·프로젝트 Skills를 함께 검색합니다. 접두어뿐 아니라
+부분·퍼지 검색도 지원합니다.
 
 ### 그 외
 

@@ -15,9 +15,12 @@ main/backend.js               Engine-neutral session and turn orchestration
 main/direct-*.js              Built-in engine transport and local persistence
 main/kimi-client.js           Kimi CLI REST/WebSocket client
 main/steer-queue.js           Shared edit-window policy and direct steer queue
+main/skill-manager.js         Local Agent Skills repository and safe mutations
+main/slash-commands.js        Kimi CLI command registry and fuzzy matching
 main/auth.js + main/quota.js  Credentials, sign-in, and account quota
 renderer/js/app.js            Renderer store and cross-view coordination
 renderer/js/chat.js           Transcript, streaming, and composer behavior
+renderer/js/slash-autocomplete.js  Accessible composer command completion
 renderer/js/panel.js          Single tabbed right-side inspector
 renderer/js/*.js              Feature modules exposed through window globals
 renderer/styles/*.css         Shared tokens, layout, and component styles
@@ -95,6 +98,11 @@ createSession({ cwd }) -> session
 pickDirectory(defaultPath?) -> string | null        // native open dialog
 getGitInfo(cwd) -> { isRepository, current, branches[] }
 checkoutGitBranch(cwd, branch) -> { current, branches[], changed }
+skillsList({ cwd }) -> { projectRoot?, roots[], skills[] }
+skillsAdd({ kind, scope, cwd }) -> { cancelled, skill? }
+skillsSetEnabled({ id, enabled, cwd }) -> skill
+skillsRemove({ id, cwd }) -> { removed }
+listSlashCommands({ sessionId?, cwd? }) -> { commands[] }
 getMessages(sessionId) -> [message]
 getProfile(sessionId) -> profile        // includes usage
 sendPrompt(sessionId, text)

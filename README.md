@@ -1,4 +1,4 @@
-# Kimi-GUI [![Version](https://img.shields.io/badge/version-0.6.4-blue)](./package.json) [![Commit Activity](https://img.shields.io/github/commit-activity/m/kaminion/Kimi-GUI)](https://github.com/kaminion/Kimi-GUI/graphs/commit-activity) [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey)](#requirements)
+# Kimi-GUI [![Version](https://img.shields.io/badge/version-0.6.5-blue)](./package.json) [![Commit Activity](https://img.shields.io/github/commit-activity/m/kaminion/Kimi-GUI)](https://github.com/kaminion/Kimi-GUI/graphs/commit-activity) [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey)](#requirements)
 
 [Kimi Code](https://www.kimi.com/code/) | [Usage guide](./docs/kimi-code-made-easier.md) | [GitHub](https://github.com/kaminion/Kimi-GUI) | [한국어](./README.ko.md)
 
@@ -67,6 +67,16 @@ The summary above the prompt reports changed files plus added and deleted
 lines. Select it to open the **Changes** tab, inspect each diff, then switch to
 **Activity** in the same right-side panel when you want the execution history.
 
+### Manage Skills and CLI commands
+
+Open **Settings → Skills** to add a folder containing `SKILL.md` or a single
+Markdown Skill. Install it for your user or the active project, temporarily
+disable it without losing the files, or move it to the operating system Trash.
+
+In CLI agent mode, type `/` in the prompt to search Kimi CLI commands and
+enabled Skills. Use the arrow keys to move, `Tab` or `Enter` to complete, and
+`Esc` to close. Completion fills the prompt without executing the command.
+
 For a screenshot-led walkthrough of both engines and these workflows, see
 the [usage guide](./docs/kimi-code-made-easier.md).
 
@@ -130,6 +140,18 @@ response is running, the prompt stays editable: Enter steers the current work,
 and a separate stop button remains available. A queued adjustment can be
 edited or deleted before the engine consumes it. A live context meter shows
 how much of the active model window is in use.
+
+CLI agent mode also provides command completion directly above the prompt.
+The catalog follows Kimi Code's web-compatible slash commands and adds active
+built-in, user, and project Skills as they are discovered.
+
+### Agent Skills
+
+The visual Skills manager follows the discovery locations supported by Kimi
+Code CLI. It can install user Skills under `~/.config/agents/skills` and
+project Skills under `<project>/.agents/skills`, while also listing compatible
+Kimi, Claude, Codex, and Agents roots. Enable/disable operations preserve each
+Skill in an adjacent disabled directory, and removal uses the system Trash.
 
 ### Agent activity and usage
 

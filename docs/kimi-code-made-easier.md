@@ -65,6 +65,38 @@ sessions created by Kimi Code CLI.
 
 ![The CLI Agent mode dialog explains the advanced capabilities available after connecting](https://raw.githubusercontent.com/kaminion/Kimi-GUI/main/docs/media/release-0.6.1-cli-capabilities.png)
 
+## Bring your own Agent Skills
+
+Open **Settings → Skills** to manage the repeatable instructions Kimi Code can
+load for a task. Add a folder containing `SKILL.md` or a single Markdown Skill,
+then choose whether it belongs to your user account or the current project.
+
+Each Skill has an explicit enabled state. Disabling a Skill preserves it on
+disk so you can turn it back on later. Removing a Skill sends it to the
+operating system Trash instead of permanently deleting it.
+
+![The Skills manager showing user and project Skills with enabled and disabled states](https://raw.githubusercontent.com/kaminion/Kimi-GUI/main/docs/media/release-0.6.5-skills-manager.png)
+
+Changes are guaranteed to be picked up by new chats. This makes it practical
+to keep a small library of review checklists, release procedures, or
+project-specific conventions without editing configuration files by hand.
+
+## Find Kimi CLI commands without memorizing them
+
+In CLI Agent mode, type `/` at the start of the prompt. Kimi-GUI searches the
+web-compatible Kimi CLI command catalog plus enabled built-in, user, and
+project Skills.
+
+- Use `↑` and `↓` to move through matches.
+- Press `Tab` or `Enter` to complete the selected command.
+- Press `Esc` to close the list.
+- Keep typing to use prefix, substring, or fuzzy matching.
+
+Completion fills the prompt but does not execute the command, so you can add
+arguments or review it before sending.
+
+![Slash-command autocomplete above the prompt, including an enabled Skill](https://raw.githubusercontent.com/kaminion/Kimi-GUI/main/docs/media/release-0.6.5-slash-autocomplete.png)
+
 ## Start in the right project and branch
 
 Before sending the first message, choose the project directory and an existing
