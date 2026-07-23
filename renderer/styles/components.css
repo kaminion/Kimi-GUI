@@ -9,7 +9,7 @@
    .btn-ghost .badge .pill — ids per ARCHITECTURE.md / CONTRACT-V2.md.
    Inner-element hooks (documented in docs/design.md):
    .msg-tool-header, .tool-status, .tool-chevron, .tool-name, .tool-summary,
-   .msg-tool-body, .msg-thinking-body, .code-block, .code-block-header,
+   .msg-tool-body, .msg-thinking-body, .code-block, .code-header,
    .code-lang, .code-copy-btn, .progress-fill, .modal-title, .modal-body,
    .modal-actions. Expand/collapse toggle class: .expanded.
    Shell hooks (sidebar.js / usage.js / app.js): .session-group (layout.css),
@@ -25,6 +25,7 @@
 .tool-chevron,
 .tool-status,
 #send-btn::before,
+#composer-abort-btn::before,
 #search-open-btn::before,
 #settings-btn::before,
 #panel-toggle-btn::before,
@@ -59,6 +60,20 @@
 
 .msg-user > .md {
   white-space: normal;
+}
+
+.msg-steer {
+  border-left-color: var(--warn);
+}
+
+.msg-steer-label {
+  display: block;
+  margin-bottom: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--warn);
+  white-space: nowrap;
 }
 
 /* Assistant: full-width markdown body */
@@ -379,45 +394,64 @@
   border-radius: var(--radius-m);
 }
 
-/* Header bar: distinct darker layer (v3) so it separates clearly from the
-   code body; label left edge aligns with the 14px code padding */
-.code-block-header {
+/* Code toolbar: metadata stays at the reading edge while the action remains
+   in the predictable top-right corner, outside the horizontally scrolling
+   code surface. */
+.md .code-header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: var(--space-2);
-  padding: 6px var(--space-2) 6px 14px;
+  min-height: 32px;
+  padding: 4px 6px 4px 14px;
   background: var(--bg-secondary);
   border-bottom: 0.5px solid var(--border);
 }
 
 /* Light theme keeps the v1 translucent wash (bg-secondary == code-bg there) */
-:root[data-theme="light"] .code-block-header {
+:root[data-theme="light"] .md .code-header {
   background: var(--hover-bg);
 }
 
-.code-lang {
+.md .code-lang {
   flex: 1;
   min-width: 0;
   font-family: var(--font-mono);
   font-size: 11px;
+  line-height: 1;
   color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.code-copy-btn {
+.md .code-copy-btn {
   flex: none;
-  padding: 2px var(--space-2);
+  min-width: 48px;
+  min-height: 24px;
+  padding: 3px var(--space-2);
   font-size: 11px;
+  line-height: 1;
+  text-align: center;
   color: var(--text-secondary);
+  border: 0.5px solid transparent;
   border-radius: var(--radius-s);
 }
 
-.code-copy-btn:hover {
+.md .code-copy-btn:hover {
   background: var(--hover-bg);
+  border-color: var(--border);
   color: var(--text);
 }
 
-.code-copy-btn:active {
+.md .code-copy-btn:active {
   background: var(--active-bg);
+  transform: scale(0.97);
+}
+
+.md .code-copy-btn:disabled {
+  opacity: 1;
+  color: var(--success);
 }
 
 .md .code-block pre {
@@ -875,17 +909,39 @@
   pointer-events: none;
 }
 
-/* Busy: the send button morphs into a stop button (chat.js toggles
-   .stop-mode and routes the click to App.abort) — danger-tinted surface,
-   10px rounded-square glyph via the same CSS-mask technique. */
-#send-btn.stop-mode {
-  background: var(--danger-soft);
+/* Busy turns keep steering and stopping as two distinct actions. */
+#send-btn.steer-mode {
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
-#send-btn.stop-mode::before {
+#composer-abort-btn {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--danger-soft);
+  border-radius: 50%;
+  transition: transform 0.16s var(--ease-out);
+}
+
+#composer-abort-btn::before {
+  content: "";
+  width: 12px;
+  height: 12px;
   background: var(--danger);
   -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'%3E%3Crect x='2' y='2' width='10' height='10' rx='2.5' fill='black'/%3E%3C/svg%3E");
   mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'%3E%3Crect x='2' y='2' width='10' height='10' rx='2.5' fill='black'/%3E%3C/svg%3E");
+}
+
+#composer-abort-btn:hover {
+  filter: brightness(1.08);
+}
+
+#composer-abort-btn:active {
+  filter: brightness(0.92);
+  transform: scale(0.93);
 }
 
 /* ==========================================================================
@@ -1005,6 +1061,163 @@
   justify-content: flex-end;
   gap: var(--space-2);
   margin-top: var(--space-3);
+}
+
+/* Optional direct-engine boot prompt. Discovery, installation and connection
+   stay in one compact decision surface. */
+.modal-cli-connect {
+  width: calc(100% - 48px);
+  max-width: 460px;
+  padding: 24px;
+}
+
+.cli-connect-title {
+  margin-bottom: var(--space-2);
+  font-size: 17px;
+}
+
+.cli-connect-description {
+  max-width: 46ch;
+  color: var(--text-secondary);
+}
+
+.cli-connect-benefit {
+  display: grid;
+  gap: 3px;
+  margin-top: var(--space-3);
+  padding: 12px;
+  background: var(--bg-secondary);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius-m);
+}
+
+.cli-connect-benefit strong {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.cli-connect-benefit span {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.cli-connect-status {
+  min-height: 18px;
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
+
+.cli-connect-status.success {
+  color: var(--success);
+}
+
+.cli-connect-status.error {
+  color: var(--danger);
+}
+
+.cli-connect-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: 20px;
+}
+
+.cli-connect-never {
+  display: inline-flex !important;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: max-content;
+  margin: 0 !important;
+  font-size: 12px !important;
+  color: var(--text-secondary) !important;
+  user-select: none;
+}
+
+.cli-connect-never input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.cli-connect-buttons {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.cli-connect-buttons .btn {
+  white-space: nowrap;
+}
+
+@media (max-width: 560px) {
+  .cli-connect-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .cli-connect-buttons {
+    justify-content: stretch;
+  }
+
+  .cli-connect-buttons .btn {
+    flex: 1;
+  }
+}
+
+/* Packaged-app update prompt. The same modal advances through consent,
+   download progress, and restart without changing layout or stacking dialogs. */
+.modal-update-prompt {
+  width: calc(100% - 48px);
+  max-width: 440px;
+  padding: 24px;
+}
+
+.update-prompt-title {
+  margin-bottom: var(--space-2);
+  font-size: 17px;
+}
+
+.update-prompt-description {
+  max-width: 48ch;
+  color: var(--text-secondary);
+}
+
+.update-prompt-progress {
+  height: 5px;
+  margin-top: var(--space-3);
+  overflow: hidden;
+  background: var(--bg);
+  border: 0.5px solid var(--border);
+  border-radius: 999px;
+}
+
+.update-prompt-progress-fill {
+  display: block;
+  width: 0;
+  height: 100%;
+  background: var(--accent);
+  border-radius: inherit;
+  transition: width 0.18s var(--ease-out);
+}
+
+.update-prompt-progress-value {
+  margin-top: var(--space-2);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.update-prompt-actions {
+  align-items: center;
+}
+
+.update-prompt-actions .btn {
+  white-space: nowrap;
 }
 
 /* Approval modal specifics (approvals.js): tool line keeps the mono tool name
@@ -1706,6 +1919,19 @@
   cursor: default;
 }
 
+.msg-process[open] > .msg-process-header {
+  position: sticky;
+  top: var(--space-2);
+  z-index: 3;
+  margin-left: -10px;
+  margin-right: -4px;
+  padding: 6px 8px 6px 10px;
+  background: var(--bg-secondary);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius-m);
+  box-shadow: var(--shadow-card);
+}
+
 .msg-process-header::-webkit-details-marker {
   display: none;
 }
@@ -1757,6 +1983,14 @@
   flex: none;
   font-size: 11px;
   color: var(--text-dim);
+}
+
+.msg-process-action {
+  flex: none;
+  padding-left: var(--space-1);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--accent);
 }
 
 .msg-process-body {

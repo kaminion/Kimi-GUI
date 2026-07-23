@@ -319,26 +319,41 @@ body {
    context meter moved to the composer options row, right edge.) */
 #chat-header {
   flex: none;
-  min-height: 48px;
+  min-height: 58px;
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: 0 var(--space-3);
+  padding: 0 var(--space-4);
   background: var(--header-bg);
   -webkit-backdrop-filter: saturate(180%) blur(20px);
   backdrop-filter: saturate(180%) blur(20px);
-  border-bottom: 0.5px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  box-shadow: var(--shadow-card);
 }
 
-#chat-header > :not(#chat-title) {
+#chat-header > :not(#chat-title-group) {
   flex: none;
 }
 
-#chat-title {
+#chat-title-group {
   flex: 1;
   min-width: 0;
-  font-size: 13px;
+  display: grid;
+  gap: 1px;
+}
+
+#chat-section-label {
+  font-size: 10px;
   font-weight: 600;
+  line-height: 1.2;
+  color: var(--text-secondary);
+}
+
+#chat-title {
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -350,7 +365,7 @@ body {
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: var(--space-4) var(--space-3);
+  padding: 28px var(--space-3) var(--space-4);
 }
 
 #transcript > * {

@@ -11,6 +11,41 @@
   'use strict';
 
   const T = (k, f) => (window.I18N?.t ? window.I18N.t(k, f) : f);
+  const LANGUAGE_NAMES = {
+    bash: 'Shell',
+    c: 'C',
+    cpp: 'C++',
+    cs: 'C#',
+    css: 'CSS',
+    go: 'Go',
+    html: 'HTML',
+    java: 'Java',
+    javascript: 'JavaScript',
+    js: 'JavaScript',
+    json: 'JSON',
+    jsx: 'JSX',
+    kotlin: 'Kotlin',
+    markdown: 'Markdown',
+    md: 'Markdown',
+    php: 'PHP',
+    powershell: 'PowerShell',
+    ps1: 'PowerShell',
+    py: 'Python',
+    python: 'Python',
+    rb: 'Ruby',
+    ruby: 'Ruby',
+    rust: 'Rust',
+    sh: 'Shell',
+    shell: 'Shell',
+    sql: 'SQL',
+    swift: 'Swift',
+    ts: 'TypeScript',
+    tsx: 'TSX',
+    typescript: 'TypeScript',
+    xml: 'XML',
+    yaml: 'YAML',
+    yml: 'YAML',
+  };
 
   // Tags GitHub-style markdown may legitimately produce. Everything else is escaped.
   const ALLOWED_TAGS = new Set([
@@ -105,6 +140,11 @@
     }
   }
 
+  function displayLanguage(lang) {
+    if (!lang || lang.toLowerCase() === 'text') return T('markdown.plain_text', '일반 텍스트');
+    return LANGUAGE_NAMES[lang.toLowerCase()] || lang;
+  }
+
   // Add hljs highlighting + header bar (language label + copy button) to each block.
   function enhanceCodeBlocks(root) {
     for (const pre of Array.from(root.querySelectorAll('pre'))) {
@@ -123,15 +163,18 @@
       }
       const wrap = document.createElement('div');
       wrap.className = 'code-block';
+      wrap.dataset.language = lang;
       const header = document.createElement('div');
       header.className = 'code-header';
       const label = document.createElement('span');
       label.className = 'code-lang';
-      label.textContent = lang || 'text';
+      label.textContent = displayLanguage(lang);
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'code-copy-btn';
       btn.textContent = T('markdown.copy', '복사');
+      btn.setAttribute('aria-label', T('markdown.copy_aria', '코드 복사'));
+      btn.setAttribute('aria-live', 'polite');
       header.append(label, btn);
       pre.parentNode.replaceChild(wrap, pre);
       wrap.append(header, pre);
@@ -172,13 +215,22 @@
       const block = copyBtn.closest('.code-block');
       const pre = block && block.querySelector('pre');
       const text = pre ? pre.textContent || '' : '';
-      if (navigator.clipboard && text) {
-        navigator.clipboard.writeText(text).then(() => {
-          const prev = copyBtn.textContent;
+      if (text) {
+        const write = Promise.resolve().then(() => {
+          if (!navigator.clipboard?.writeText) throw new Error('clipboard API unavailable');
+          return navigator.clipboard.writeText(text);
+        });
+        write.then(() => {
           copyBtn.textContent = T('markdown.copied', '복사됨');
           copyBtn.disabled = true;
-          setTimeout(() => { copyBtn.textContent = prev; copyBtn.disabled = false; }, 1200);
-        }).catch(() => { /* clipboard unavailable: no-op */ });
+          setTimeout(() => {
+            copyBtn.textContent = T('markdown.copy', '복사');
+            copyBtn.disabled = false;
+          }, 1200);
+        }).catch(() => {
+          copyBtn.textContent = T('markdown.copy_failed', '복사 실패');
+          setTimeout(() => { copyBtn.textContent = T('markdown.copy', '복사'); }, 1200);
+        });
       }
       return;
     }
@@ -190,6 +242,20 @@
         if (window.kimi && typeof window.kimi.openExternal === 'function') {
           window.kimi.openExternal(href);
         }
+      }
+    }
+  });
+
+  window.I18N?.onChange?.(() => {
+    for (const block of document.querySelectorAll('.code-block')) {
+      const label = block.querySelector('.code-lang');
+      const button = block.querySelector('.code-copy-btn');
+      if (label) label.textContent = displayLanguage(block.dataset.language || '');
+      if (button) {
+        button.textContent = button.disabled
+          ? T('markdown.copied', '복사됨')
+          : T('markdown.copy', '복사');
+        button.setAttribute('aria-label', T('markdown.copy_aria', '코드 복사'));
       }
     }
   });
