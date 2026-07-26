@@ -44,6 +44,9 @@ const api = {
   // New-chat workspace controls.
   getGitInfo: (cwd) => invoke('getGitInfo', cwd),
   checkoutGitBranch: (cwd, branch) => invoke('checkoutGitBranch', cwd, branch),
+  // -> { isRepository, clean: [...] } — which of the given paths are clean in
+  // Git (committed); used to filter the conversation change summary.
+  getGitCleanFiles: (cwd, paths) => invoke('getGitCleanFiles', cwd, paths),
   // Local Agent Skills repository. Mutations are serialized in main and
   // removal always uses the OS Trash.
   skillsList: ({ cwd } = {}) => invoke('skillsList', { cwd }),

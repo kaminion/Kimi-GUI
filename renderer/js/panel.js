@@ -8,6 +8,14 @@
  * and wires the header toggle button; Panel owns everything rendered inside
  * the activity/change containers.
  *
+ * v9: the conversation change summary rides the composer options row as the
+ * compact #changes-pill (hidden at zero changes) instead of the old
+ * full-width strip above the composer. Clicking it opens a .changes-popover
+ * file list (shared .model-dropdown chrome, grows upward from the pill,
+ * closes on outside click / Escape); a row jumps to that file's detail in
+ * the Changes tab. chat.js filters committed-away files out of the snapshot
+ * before it reaches us (kimi:changes-updated).
+ *
  * Wire facts (docs/protocol.md + docs/ref/webui-bundle.js, kimi 0.28.1):
  * - Events arrive as raw WS frames {type, session_id, payload:{...}}; the type may
  *   carry an `event.` prefix (stripped here, mirroring chat.js). Payload fields
@@ -46,7 +54,7 @@
     root: null, title: null, closeBtn: null, content: null,
     tabs: null, activityTab: null, changesTab: null, changesTabCount: null,
     work: null, status: null, tasks: null, activity: null, files: null, changes: null,
-    summaryBtn: null, composerChangeStatus: null, empty: null,
+    changesPill: null, empty: null,
   };
   let bound = false;
   let open = false;
@@ -55,6 +63,7 @@
   const sessions = new Map();    // sid -> { busy, activeTool, activities, files, tasks, tasksErr }
   let pollTimer = null;
   let taskRefetchTimer = null;
+  let popover = null;            // open .changes-popover element (null = closed)
 
   function freshState() {
     return {
@@ -348,24 +357,121 @@
         ? filesChangedText(fileCount)
         : T('changes.empty', '기록된 변경사항이 없습니다');
     }
-    if (!els.summaryBtn) return;
-    els.summaryBtn.hidden = !hasChanges;
-    if (els.composerChangeStatus) els.composerChangeStatus.hidden = !hasChanges;
+    if (!els.changesPill) return;
+    els.changesPill.hidden = !hasChanges;
     if (!hasChanges) {
-      els.summaryBtn.textContent = '';
+      closePopover();
+      els.changesPill.textContent = '';
       return;
     }
 
-    els.summaryBtn.textContent = '';
-    els.summaryBtn.append(el('span', 'changes-summary-label', filesChangedText(snapshot.fileCount)));
-    appendChangeStats(els.summaryBtn, snapshot.additions, snapshot.deletions);
-    els.summaryBtn.append(el('span', 'changes-summary-chevron', '›'));
+    els.changesPill.textContent = '';
+    els.changesPill.append(el('span', 'changes-pill-label', filesChangedText(snapshot.fileCount)));
+    appendChangeStats(els.changesPill, snapshot.additions, snapshot.deletions);
     const openLabel = T('changes.open_review', '변경사항 검토 열기');
-    els.summaryBtn.title = openLabel;
-    els.summaryBtn.setAttribute(
+    els.changesPill.title = openLabel;
+    els.changesPill.setAttribute(
       'aria-label',
       filesChangedText(snapshot.fileCount) + ', +' + snapshot.additions + ', -' + snapshot.deletions + '. ' + openLabel,
     );
+  }
+
+  // ---- changes popover -------------------------------------------------------
+  // The composer pill opens a floating file list (same .model-dropdown chrome
+  // as the chat-options dropdowns) that grows upward from the pill. Rows jump
+  // to the file's detail in the Changes tab.
+
+  // Middle-ellipsis for long paths: keep a head segment and the file name.
+  function shortenPath(p, max) {
+    p = String(p);
+    if (p.length <= max) return p;
+    const name = p.slice(p.lastIndexOf('/') + 1);
+    let head = p.slice(0, Math.max(0, max - name.length - 3)); // '/…/' fits between
+    const cut = head.lastIndexOf('/');
+    if (cut > 0) head = head.slice(0, cut);
+    return head + '/…/' + name;
+  }
+
+  function closePopover(restoreFocus) {
+    if (popover) popover.remove();
+    popover = null;
+    document.removeEventListener('mousedown', onDocMouseDown, true);
+    document.removeEventListener('keydown', onPopoverKey, true);
+    els.changesPill?.setAttribute('aria-expanded', 'false');
+    if (restoreFocus) els.changesPill?.focus?.();
+  }
+
+  function onDocMouseDown(event) {
+    if (!popover) return;
+    if (popover.contains(event.target) || els.changesPill?.contains(event.target)) return;
+    closePopover();
+  }
+
+  function onPopoverKey(event) {
+    if (event.key === 'Escape') {
+      event.stopPropagation();
+      closePopover(true);
+    }
+  }
+
+  /** Anchor the popover to the pill; clamp horizontally, open upward when it
+   * would overflow the window bottom (the composer row sits at the bottom
+   * edge, so upward is the common case). Safe to call again after refills. */
+  function placePopover() {
+    if (!popover || !els.changesPill) return;
+    const r = els.changesPill.getBoundingClientRect();
+    popover.style.left = `${Math.max(8, r.left)}px`;
+    popover.style.top = `${r.bottom + 4}px`;
+    let pr = popover.getBoundingClientRect();
+    if (pr.right > window.innerWidth - 8) {
+      popover.style.left = `${Math.max(8, window.innerWidth - 8 - pr.width)}px`;
+    }
+    pr = popover.getBoundingClientRect();
+    const flipped = pr.bottom > window.innerHeight - 8;
+    if (flipped) {
+      popover.style.top = `${Math.max(8, r.top - pr.height - 4)}px`;
+    }
+    /* Enter animation (settings.css model-dropdown-in) grows from the pill:
+       origin rides the edge the popover is anchored to. */
+    popover.style.transformOrigin = flipped ? 'bottom left' : 'top left';
+  }
+
+  function fillPopover(st) {
+    if (!popover) return;
+    popover.textContent = '';
+    const files = Array.isArray(st?.changes?.files) ? st.changes.files : [];
+    for (const file of files) {
+      const row = el('button', 'model-dropdown-item changes-popover-file');
+      row.type = 'button';
+      row.setAttribute('role', 'menuitem');
+      const displayPath = file.oldPath ? file.oldPath + ' → ' + file.path : file.path;
+      row.title = displayPath;
+      row.append(el('span', 'changes-popover-path', shortenPath(displayPath, 56)));
+      const stats = el('span', 'changes-popover-stats');
+      appendChangeStats(stats, file.additions, file.deletions);
+      row.append(stats);
+      row.addEventListener('click', () => {
+        st.selectedChangePath = file.path;
+        closePopover();
+        openChanges();
+      });
+      popover.append(row);
+    }
+  }
+
+  function toggleChangesPopover() {
+    if (popover) { closePopover(true); return; }
+    const st = activeId ? sessions.get(activeId) : null;
+    if (!st?.changes?.files?.length) return;
+    popover = el('div', 'model-dropdown changes-popover');
+    popover.setAttribute('role', 'menu');
+    popover.setAttribute('aria-label', T('changes.open_review', '변경사항 검토 열기'));
+    document.body.appendChild(popover);
+    document.addEventListener('mousedown', onDocMouseDown, true);
+    document.addEventListener('keydown', onPopoverKey, true);
+    fillPopover(st);
+    placePopover();
+    els.changesPill?.setAttribute('aria-expanded', 'true');
   }
 
   function buildPanelChangeLine(row) {
@@ -527,6 +633,7 @@
   // ---- public: session selection ---------------------------------------------------
   function setActiveSession(id) {
     activeId = id || null;
+    closePopover(); // the popover's file list belongs to the previous session
     if (!activeId) { render(); ensurePolling(); return; }
     const st = stateFor(activeId);
     st.tasks = null; // loading; view resets to this session's own state
@@ -645,6 +752,11 @@
     }
     if (sid !== activeId || !bound) return;
     renderSummaryButton(st);
+    if (popover) {
+      // Live update (or close) the open popover as files settle/commit away.
+      if (snapshot.files?.length) { fillPopover(st); placePopover(); }
+      else closePopover();
+    }
     if (open && activeTab === 'changes') render();
   }
 
@@ -679,8 +791,7 @@
     els.activity = document.getElementById('panel-activity');
     els.files = document.getElementById('panel-files');
     els.changes = document.getElementById('panel-changes');
-    els.summaryBtn = document.getElementById('changes-summary-btn');
-    els.composerChangeStatus = document.getElementById('composer-change-status');
+    els.changesPill = document.getElementById('changes-pill');
 
     if (els.closeBtn) {
       if (!els.closeBtn.textContent) els.closeBtn.textContent = '✕';
@@ -699,7 +810,7 @@
       const next = event.key === 'ArrowLeft' || event.key === 'Home' ? 'activity' : 'changes';
       selectTab(next, true);
     });
-    els.summaryBtn?.addEventListener('click', openChanges);
+    els.changesPill?.addEventListener('click', toggleChangesPopover);
     applyStrings();
 
     let stored = null;
@@ -716,6 +827,7 @@
     if (!bound) return;
     applyStrings();
     renderSummaryButton(activeId ? sessions.get(activeId) : null);
+    if (popover) fillPopover(activeId ? sessions.get(activeId) : null);
     if (open) render();
   });
 

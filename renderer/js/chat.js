@@ -802,15 +802,80 @@
     };
   }
 
+  // ---- git-clean filtering --------------------------------------------------
+  // Files the agent touched but that are clean in Git (committed, possibly
+  // pushed) drop out of the change summary. main reports which snapshot paths
+  // are clean (getGitCleanFiles); the result is cached per session, applied
+  // at emission, and refreshed (debounced) after each publish — turn ends and
+  // history resyncs both funnel through publishChanges, so a mid-turn or
+  // just-finished commit settles without extra hooks. Fail-open everywhere:
+  // a non-repo cwd, a missing bridge, or a failed call keeps every file.
+  const GIT_FILTER_DEBOUNCE_MS = 300;
+  let gitCleanCache = null;   // { sessionId, clean:Set<string> } | null
+  let gitFilterTimer = null;
+  let gitFilterSeq = 0;
+
+  function sessionCwd(sid) {
+    const session = window.App?.state?.sessions?.find?.((s) => s && s.id === sid);
+    return typeof session?.cwd === 'string' && session.cwd ? session.cwd : null;
+  }
+
+  function applyCleanFilter(snapshot) {
+    const cache = gitCleanCache;
+    if (!cache || cache.sessionId !== snapshot.sessionId || !snapshot.files.length) {
+      return snapshot;
+    }
+    const files = snapshot.files.filter((file) => !cache.clean.has(file.path));
+    if (files.length === snapshot.files.length) return snapshot;
+    return {
+      ...snapshot,
+      files,
+      fileCount: files.length,
+      additions: files.reduce((sum, file) => sum + file.additions, 0),
+      deletions: files.reduce((sum, file) => sum + file.deletions, 0),
+    };
+  }
+
   function emitChangeSnapshot(snapshot) {
-    currentChangeSnapshot = snapshot;
+    currentChangeSnapshot = applyCleanFilter(snapshot);
     if (typeof window.CustomEvent === 'function') {
-      window.dispatchEvent(new CustomEvent('kimi:changes-updated', { detail: snapshot }));
+      window.dispatchEvent(new CustomEvent('kimi:changes-updated', { detail: currentChangeSnapshot }));
     }
   }
 
+  async function refreshChangeFilter() {
+    const sid = activeSessionId;
+    if (!sid || typeof window.kimi?.getGitCleanFiles !== 'function') return;
+    const cwd = sessionCwd(sid);
+    if (!cwd) return;
+    const raw = buildChangeSnapshot();
+    if (!raw.files.length) return;
+    const seq = ++gitFilterSeq;
+    let result = null;
+    try {
+      result = await window.kimi.getGitCleanFiles(cwd, raw.files.map((file) => file.path));
+    } catch { /* fail-open: keep the current summary */ }
+    if (seq !== gitFilterSeq || sid !== activeSessionId) return; // superseded
+    if (!result || !result.isRepository || !Array.isArray(result.clean)) return;
+    gitCleanCache = { sessionId: sid, clean: new Set(result.clean) };
+    emitChangeSnapshot(buildChangeSnapshot()); // re-emit with the filter applied
+  }
+
+  function scheduleChangeFilter(snapshot) {
+    if (!snapshot?.files?.length || !snapshot.sessionId) return;
+    if (typeof window.kimi?.getGitCleanFiles !== 'function') return;
+    if (!sessionCwd(snapshot.sessionId)) return;
+    if (gitFilterTimer) return; // one pending refresh coalesces this burst
+    gitFilterTimer = setTimeout(() => {
+      gitFilterTimer = null;
+      void refreshChangeFilter();
+    }, GIT_FILTER_DEBOUNCE_MS);
+  }
+
   function publishChanges() {
-    emitChangeSnapshot(buildChangeSnapshot());
+    const snapshot = buildChangeSnapshot();
+    emitChangeSnapshot(snapshot);
+    scheduleChangeFilter(snapshot);
   }
 
   // Expanded tool row body: formatted blocks (built with textContent only, so
@@ -1415,6 +1480,11 @@
     const rowEl = changeSet || buildToolRow(part, null, true);
     ls.tools.set(id, { part, rowEl, done: false, isChange: !!changeSet });
     (changeSet ? ls.changeWrap : ls.bodyEl).append(rowEl);
+    if (changeSet && gitCleanCache) {
+      // A file the agent is mutating right now cannot be clean — drop any
+      // stale clean verdict so a re-edited file reappears immediately.
+      for (const change of mutationChanges(part)) gitCleanCache.clean.delete(change.path);
+    }
     ls.activity = 'tool';
     ls.toolName = part.tool_name;
     updateLiveHeader(ls);

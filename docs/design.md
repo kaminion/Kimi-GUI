@@ -205,14 +205,20 @@ instead of being buried inside the generic tool log.
   after the thinking disclosure collapses.
 - The component uses the existing dark-first tokens and has an explicit
   narrow-window layout at 640px.
-- `#changes-summary-btn` appears centered in `#composer-change-status`,
-  immediately above the prompt, when the active session has recorded edits. It
-  reports the unique file count plus cumulative added/deleted line totals.
+- `#changes-pill` rides the composer options row (after the swarm pill) and
+  stays hidden at zero changes. It reports the unique file count plus
+  cumulative added/deleted line totals and opens a `.changes-popover` file
+  list (shared `.model-dropdown` chrome) that grows upward from the pill —
+  each row shows a middle-ellipsized path and per-file `+N` / `-N` stats.
+  Files that are clean in Git (committed, possibly pushed) drop out of the
+  summary: chat.js asks main for the repo's clean paths and re-emits the
+  filtered snapshot when a turn settles.
 - Its former options-row position is `#branch-indicator`, a read-only display
   of the active worktree branch (or localized `None`).
 - The right side uses one persistent `#panel` with `Activity` and `Changes`
-  tabs; it never creates or stacks a second inspector. Clicking the composer
-  summary opens the existing panel and selects its `Changes` tab.
+  tabs; it never creates or stacks a second inspector. Clicking a popover
+  file row opens the existing panel, selects its `Changes` tab, and focuses
+  that file's diff detail.
 - The Changes tab badge reports the current unique file count. Its body groups
   repeated edits by file, keeps per-file statistics, and switches the diff
   detail without leaving the conversation. The Activity tab keeps run status,

@@ -1023,88 +1023,38 @@ button.draft-context-control:hover {
   flex-wrap: wrap;
 }
 
-#composer-change-status {
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: calc(100% - var(--space-5));
-  max-width: 800px;
-  min-height: 34px;
-  margin: 0 auto var(--space-1);
-  /* Appears/vanishes with run state (panel.js): soften the teleport with a
-     quick fade. Near-imperceptible tier — opacity-only, no movement. */
-  transition-property: opacity, display;
-  transition-duration: 140ms;
-  transition-timing-function: var(--ease-out);
-  transition-behavior: allow-discrete;
-}
-
-/* display:none stays the first declaration — composer-layout.test.js pins it. */
-#composer-change-status[hidden] {
-  display: none;
-  opacity: 0;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  /* The fade is the gentle form — keep it under reduced motion (!important
-     beats the global kill-switch in base.css). */
-  #composer-change-status {
-    transition-duration: 140ms !important;
-  }
-}
-
-/* Conversation-level file-change summary, separated from the prompt card. */
-#composer-change-status #changes-summary-btn {
-  flex: none;
-  min-width: 0;
-  min-height: 34px;
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 8px 20px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--bg-secondary);
-  color: var(--text);
-  font-family: var(--font-ui);
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 1;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
-}
-
-#composer-change-status #changes-summary-btn[hidden] {
-  display: none;
-}
-
-#composer-change-status #changes-summary-btn:hover {
-  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
-  background: var(--hover-bg);
-  color: var(--text);
-}
-
-#composer-change-status #changes-summary-btn:active {
-  transform: scale(0.97);
-  background: var(--active-bg);
-}
-
-#composer-change-status #changes-summary-btn .change-stat {
+/* Change-summary pill rides the composer options row (base .pill style covers
+   layout + the hidden-fade); only the stat numerals need a local tweak. */
+#changes-pill .change-stat {
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
-.changes-summary-label {
-  max-width: 160px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+/* Popover file list: shared .model-dropdown chrome (fixed position, scroll
+   cap, grow-from-pill enter animation) — these rules only shape the rows. */
+.changes-popover {
+  min-width: 240px;
+  max-width: 420px;
 }
 
-.changes-summary-chevron {
-  color: var(--text-dim);
-  font-size: 16px;
+.changes-popover-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.changes-popover-stats {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
 
 #branch-indicator {
@@ -1153,10 +1103,6 @@ button.draft-context-control:hover {
 }
 
 @media (max-width: 640px) {
-  .changes-summary-label {
-    max-width: 110px;
-  }
-
   #draft-context {
     align-items: stretch;
     flex-direction: column;

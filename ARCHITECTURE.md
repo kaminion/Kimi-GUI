@@ -153,9 +153,6 @@ IPC: `ipcMain.handle` for request/response channels `kimi:<name>`; push via `web
             <button id="draft-directory-btn"></button>
             <select id="draft-branch-select" disabled></select>
           </div>
-          <div id="composer-change-status" hidden>
-            <button id="changes-summary-btn" hidden></button>
-          </div>
           <textarea id="composer" rows="1"></textarea>
           <button id="composer-abort-btn" hidden></button>
           <button id="send-btn"></button>
@@ -163,6 +160,7 @@ IPC: `ipcMain.handle` for request/response channels `kimi:<name>`; push via `web
             <button id="model-select"></button>
             <button id="swarm-toggle"></button>
             <button id="effort-select"></button>
+            <button id="changes-pill" hidden></button>
             <span id="branch-indicator"></span>
             <span id="context-meter"></span>
           </div>

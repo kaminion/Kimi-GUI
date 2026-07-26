@@ -8,28 +8,34 @@ const assert = require('node:assert/strict');
 const root = path.resolve(__dirname, '..');
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8');
 
-test('file-change summary is a sibling above the prompt card', () => {
+test('changes pill rides the composer options row; the full-width strip is gone', () => {
   const html = read('renderer/index.html');
-  const statusStart = html.indexOf('<div id="composer-change-status"');
-  const statusEnd = html.indexOf('</div>', statusStart);
-  const composerStart = html.indexOf('<div id="composer-wrap">');
-  const composerEnd = html.indexOf('</div>', composerStart);
 
-  assert.ok(statusStart >= 0);
-  assert.ok(statusEnd < composerStart);
-  assert.ok(composerStart >= 0);
-  assert.ok(composerEnd > composerStart);
-  assert.equal(
-    html.slice(composerStart, composerEnd).includes('id="composer-change-status"'),
-    false,
-  );
+  // v9: the strip above the composer was replaced by a pill in the options row.
+  assert.equal(html.includes('composer-change-status'), false);
+  assert.equal(html.includes('changes-summary-btn'), false);
+
+  const rowStart = html.indexOf('<div id="composer-options">');
+  const rowEnd = html.indexOf('id="branch-indicator"', rowStart);
+  assert.ok(rowStart >= 0 && rowEnd > rowStart);
+  const row = html.slice(rowStart, rowEnd);
+  // The pill trails the option pills (after swarm) and starts hidden.
+  assert.ok(row.indexOf('id="swarm-toggle"') < row.indexOf('id="changes-pill"'));
+  assert.match(row, /id="changes-pill" class="pill" type="button" hidden/);
+  assert.match(row, /id="changes-pill"[^>]*aria-haspopup="true"/);
 });
 
-test('file-change summary owns independent outer spacing', () => {
+test('changes popover reuses the dropdown chrome; strip styles are removed', () => {
   const styles = read('renderer/styles/settings.css');
-  assert.match(styles, /#composer-change-status\s*\{[^}]*width:\s*calc\(100% - var\(--space-5\)\)/s);
-  assert.match(styles, /#composer-change-status\s*\{[^}]*margin:\s*0 auto var\(--space-1\)/s);
-  assert.match(styles, /#composer-change-status\[hidden\]\s*\{\s*display:\s*none/s);
+  const panel = read('renderer/js/panel.js');
+
+  assert.equal(styles.includes('#composer-change-status'), false);
+  assert.equal(styles.includes('changes-summary-btn'), false);
+  // Popover: same .model-dropdown chrome as the option dropdowns, plus rows.
+  assert.match(panel, /'model-dropdown changes-popover'/);
+  assert.match(styles, /\.changes-popover\s*\{[^}]*max-width/s);
+  assert.match(styles, /\.changes-popover-path\s*\{[^}]*text-overflow:\s*ellipsis/s);
+  assert.match(styles, /\.changes-popover-stats\s*\{[^}]*font-variant-numeric:\s*tabular-nums/s);
 });
 
 test('one composer button morphs between SEND, STOP, and SCHEDULE', () => {

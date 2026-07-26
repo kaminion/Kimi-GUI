@@ -73,10 +73,16 @@ test('composer option pills fade in when engine capabilities unhide them', () =>
   assert.match(styles, /#composer-options \.pill\[hidden\]\s*\{\s*opacity:\s*0/s);
 });
 
-test('composer change status fades in/out instead of teleporting', () => {
+test('changes popover grows from its pill with the shared dropdown motion', () => {
   const styles = read('renderer/styles/settings.css');
-  assert.match(styles, /#composer-change-status\s*\{[^}]*transition-property:\s*opacity, display/s);
-  assert.match(styles, /#composer-change-status\s*\{[^}]*transition-behavior:\s*allow-discrete/s);
-  // display:none stays the first declaration (composer-layout.test.js pins it).
-  assert.match(styles, /#composer-change-status\[hidden\]\s*\{\s*display:\s*none;\s*opacity:\s*0/s);
+  const js = read('renderer/js/panel.js');
+
+  // v9: the old #composer-change-status fade is gone with the strip. The
+  // pill itself fades via the shared #composer-options .pill rule (pinned
+  // above); the popover reuses the model-dropdown grow-from-owner animation.
+  assert.equal(styles.includes('#composer-change-status'), false);
+  assert.match(js, /'model-dropdown changes-popover'/);
+  // placePopover() flips the origin when the list opens upward (the common
+  // case — the composer row sits at the window's bottom edge).
+  assert.match(js, /transformOrigin = flipped \? 'bottom left' : 'top left'/);
 });

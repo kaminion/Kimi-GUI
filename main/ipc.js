@@ -161,6 +161,16 @@ function registerIpc({ backend, getWindow, broadcast }) {
     return git.checkout(cwd, branch);
   });
 
+  // Change-summary filtering: which of these paths are clean in Git
+  // (committed) and should drop out of the conversation change list.
+  handle('getGitCleanFiles', (cwd, paths) => {
+    const git = loadGitWorkspace();
+    if (!git || typeof git.listCleanPaths !== 'function') {
+      return { isRepository: false, clean: [] };
+    }
+    return git.listCleanPaths(cwd, paths);
+  });
+
   // --- Agent Skills --------------------------------------------------------
 
   const requireSkills = () => {
