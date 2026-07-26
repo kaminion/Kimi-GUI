@@ -29,6 +29,18 @@
   border: 0.5px solid var(--border);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-modal);
+  /* Enter matches the approval/question card (.modal in components.css):
+     same modal-pop settle, centered origin (modals are origin-exempt). */
+  animation: modal-pop 0.18s var(--ease-out);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Gentler, not zero: keep the opacity fade, drop the scale settle. The
+     !important shorthand restores a real duration against the global
+     reduced-motion kill-switch in base.css. */
+  .settings-modal {
+    animation: modal-fade 140ms ease-out !important;
+  }
 }
 
 .skills-library-modal {
@@ -614,6 +626,26 @@
   border: 0.5px solid var(--border);
   border-radius: var(--radius-l);
   box-shadow: var(--shadow-modal);
+  /* Enter grows from the owner pill: chat-options.js placeDropdown() flips
+     transform-origin to 'bottom left' when the list opens upward. Exit is
+     instant (dropdown.remove()), which keeps it faster than the enter. */
+  transform-origin: top left;
+  animation: model-dropdown-in 0.15s var(--ease-out);
+}
+
+@keyframes model-dropdown-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Gentler, not zero: fade only, no scale. !important restores a real
+     duration against the global kill-switch in base.css. */
+  .model-dropdown {
+    animation: modal-fade 140ms ease-out !important;
+  }
 }
 
 .model-dropdown-item {
@@ -762,6 +794,25 @@
   overflow: hidden;
   cursor: default;
   user-select: none;
+  /* Pills unhide once engine capabilities resolve (chat-options.js init):
+     fade in instead of teleporting into the row. Opacity-only — the pills
+     are read, not watched. */
+  transition-property: opacity, display;
+  transition-duration: 160ms;
+  transition-timing-function: var(--ease-out);
+  transition-behavior: allow-discrete;
+}
+
+#composer-options .pill[hidden] {
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The fade is the gentle form — keep it running under reduced motion
+     (!important beats the global kill-switch in base.css). */
+  #composer-options .pill {
+    transition-duration: 160ms !important;
+  }
 }
 
 #composer-options .pill:hover {
@@ -981,10 +1032,26 @@ button.draft-context-control:hover {
   max-width: 800px;
   min-height: 34px;
   margin: 0 auto var(--space-1);
+  /* Appears/vanishes with run state (panel.js): soften the teleport with a
+     quick fade. Near-imperceptible tier — opacity-only, no movement. */
+  transition-property: opacity, display;
+  transition-duration: 140ms;
+  transition-timing-function: var(--ease-out);
+  transition-behavior: allow-discrete;
 }
 
+/* display:none stays the first declaration — composer-layout.test.js pins it. */
 #composer-change-status[hidden] {
   display: none;
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The fade is the gentle form — keep it under reduced motion (!important
+     beats the global kill-switch in base.css). */
+  #composer-change-status {
+    transition-duration: 140ms !important;
+  }
 }
 
 /* Conversation-level file-change summary, separated from the prompt card. */

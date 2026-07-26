@@ -150,9 +150,13 @@
       dropdown.style.left = `${Math.max(8, window.innerWidth - 8 - dr.width)}px`;
     }
     dr = dropdown.getBoundingClientRect();
-    if (dr.bottom > window.innerHeight - 8) {
+    const flipped = dr.bottom > window.innerHeight - 8;
+    if (flipped) {
       dropdown.style.top = `${Math.max(8, r.top - dr.height - 4)}px`;
     }
+    /* Enter animation (settings.css model-dropdown-in) grows from the pill:
+       origin rides the edge the dropdown is anchored to. */
+    dropdown.style.transformOrigin = flipped ? 'bottom left' : 'top left';
   }
 
   function dropdownItem(label, current, onSelect, desc) {

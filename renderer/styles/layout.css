@@ -698,10 +698,33 @@ body {
   border: 0.5px dashed var(--border);
   border-radius: var(--radius-m);
   user-select: none;
+  /* Fade + small rise as [hidden] toggles mid-drag (sidebar.js). display
+     rides the transition with allow-discrete: visible at once on enter,
+     painted until the exit fade completes. */
+  transition-property: opacity, transform, display;
+  transition-duration: 140ms;
+  transition-timing-function: var(--ease-out);
+  transition-behavior: allow-discrete;
 }
 
 #group-unassign-zone[hidden] {
   display: none;
+  opacity: 0;
+  transform: translateY(6px);
+  transition-duration: 100ms; /* exits run faster than enters */
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Gentler, not zero: keep the opacity fade, drop the rise. !important
+     restores real durations against the global kill-switch in base.css. */
+  #group-unassign-zone {
+    transition-duration: 140ms !important;
+  }
+
+  #group-unassign-zone[hidden] {
+    transform: none;
+    transition-duration: 100ms !important;
+  }
 }
 
 #group-unassign-zone.drop-target {
