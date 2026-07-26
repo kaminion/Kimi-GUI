@@ -61,3 +61,17 @@ test('busy sends park as scheduled messages, never implicit steers', () => {
   assert.match(chat, /swapComposerDraft\(sessionId\)/);
   assert.equal(chat.includes('chat.steer_placeholder'), false);
 });
+
+test('composer options order: model, thinking, permission, then swarm (v7)', () => {
+  const html = read('renderer/index.html');
+  const rowStart = html.indexOf('<div id="composer-options">');
+  const rowEnd = html.indexOf('id="branch-indicator"', rowStart);
+  assert.ok(rowStart >= 0 && rowEnd > rowStart);
+  const row = html.slice(rowStart, rowEnd);
+  // model+thinking shape the answer, permission gates tool approval, swarm
+  // rides last (cli-only; renders inert under the direct engine).
+  const ids = ['id="model-select"', 'id="effort-select"', 'id="permission-select"', 'id="swarm-toggle"'];
+  const positions = ids.map((marker) => row.indexOf(marker));
+  assert.ok(positions.every((p) => p >= 0));
+  assert.deepEqual(positions, [...positions].sort((a, b) => a - b));
+});

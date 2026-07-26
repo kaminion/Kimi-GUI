@@ -208,6 +208,9 @@
           // model must be set via the profile endpoint before the first prompt.
           await applyDefaultModel(session.id);
           await applyDefaultSwarm(session.id); // v4 (R2): settings 스웜 기본값
+          // v7: draft-chat composer picks (pending in chat-options.js) win
+          // over the Settings defaults applied above.
+          await applyPendingChatOptions(session.id);
           if (draftGroupId) {
             // Sidebar group '+' draft: file the lazily-created session into
             // the group before the refresh renders it.
@@ -468,6 +471,20 @@
       }
     } catch (err) {
       console.error('setSessionSwarm failed (best-effort)', err);
+    }
+  }
+
+  /**
+   * v7: options picked on the composer before the session existed (model /
+   * swarm / thinking effort / permission) live as one-shot pending values in
+   * chat-options.js; apply them right after createSession, over the Settings
+   * defaults. Best-effort — per-option failures only log inside applyPending.
+   */
+  async function applyPendingChatOptions(sessionId) {
+    try {
+      await window.ChatOptions?.applyPending?.(sessionId);
+    } catch (err) {
+      console.error('applyPending chat options failed (best-effort)', err);
     }
   }
 

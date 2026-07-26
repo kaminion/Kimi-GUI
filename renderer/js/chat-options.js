@@ -1,8 +1,9 @@
 /* chat-options.js — composer options row (v3).
- * window.ChatOptions = { init(), refresh(sessionId) }
+ * window.ChatOptions = { init(), refresh(sessionId), applyPending(sessionId) }
  *
  * The options cluster lives in #composer-options (inside #composer-wrap, below
- * the textarea) since v3; v2 kept it in the chat header.
+ * the textarea) since v3; v2 kept it in the chat header. Row order (v7):
+ * model → thinking effort → permission → swarm.
  *
  * #model-select opens a custom dropdown: models from window.kimi.listModels();
  * picking one calls window.kimi.setSessionModel() and persists the alias per
@@ -16,7 +17,10 @@
  * when the direct engine omits it. Fresh cli sessions seed their on/off state
  * from localStorage 'kimi.defaultSwarm' (settings '스웜 기본값') when no
  * per-session value exists. State is per-session, optimistic UI with revert
- * on failure.
+ * on failure. v7: the pill opens an explicit ON/OFF dropdown with desc lines
+ * (same pattern as effort/permission) — the daemon's agent_config.swarm_mode
+ * is boolean-only (verified: openapi 0.28.1 profile schema, protocol.md), so
+ * there are no richer swarm parameters (agent count etc.) to expose.
  *
  * #effort-select (v3) is shown ONLY when window.kimi.setSessionEffort exists.
  * Per-session thinking level off/low/high/max (끄기/낮음/높음/최대, default
@@ -33,6 +37,14 @@
  * direct → 확인 후 실행(ask, default) / 자동 승인(auto); cli → 수동(manual,
  * default) / 자동(auto) / YOLO(yolo). Dropdown items carry a short desc line.
  *
+ * Draft chat (no session yet, v7): every pill stays usable. Picks are stored
+ * as one-shot pending values ('kimi.pendingModel' / 'kimi.pendingSwarm' /
+ * 'kimi.pendingEffort' / 'kimi.pendingPerm') and pill titles carry the
+ * '새 대화에 적용' hint; app.js calls applyPending(sessionId) right after
+ * createSession, which applies them over the Settings defaults and clears
+ * them. (The old draft swarm toggle mutated the global settings default —
+ * gone.) Pending values invalid for the live engine are dropped without IPC.
+ *
  * All copy via T() ('options.*' keys, Korean fallback).
  */
 (function () {
@@ -45,6 +57,11 @@
   const LS_EFFORT = 'kimi.sessionEffort.'; // + sessionId -> 'off'|'low'|'high'|'max'
   const LS_PERM = 'kimi.sessionPerm.'; // + sessionId -> direct 'ask'|'auto', cli 'manual'|'auto'|'yolo'
   const LS_DEFAULT_SWARM = 'kimi.defaultSwarm'; // v4: settings '스웜 기본값' -> '1' | '0'
+  // v7: one-shot draft-chat picks, applied to the next created session.
+  const LS_PENDING_MODEL = 'kimi.pendingModel'; // model alias
+  const LS_PENDING_SWARM = 'kimi.pendingSwarm'; // '1' | '0'
+  const LS_PENDING_EFFORT = 'kimi.pendingEffort'; // 'off'|'low'|'high'|'max'
+  const LS_PENDING_PERM = 'kimi.pendingPerm'; // engine permission mode
 
   const EFFORT_LEVELS = ['off', 'low', 'high', 'max'];
   const DEFAULT_EFFORT = 'high';
@@ -69,6 +86,10 @@
     manual: '도구 실행마다 확인합니다',
     yolo: '승인 없이 전부 실행합니다',
   };
+  const SWARM_DESC_FALLBACKS = {
+    on: '병렬 서브에이전트로 탐색/작업합니다',
+    off: '단일 에이전트로 실행합니다',
+  };
 
   const $ = (sel) => document.querySelector(sel);
 
@@ -81,13 +102,20 @@
 
   function lsGet(key) { try { return localStorage.getItem(key); } catch (_) { return null; } }
   function lsSet(key, val) { try { localStorage.setItem(key, val); } catch (_) { /* ignore */ } }
+  function lsRemove(key) { try { localStorage.removeItem(key); } catch (_) { /* ignore */ } }
 
   function activeSessionId() {
     const st = window.App?.state;
     return st?.activeSessionId ?? st?.activeId ?? null;
   }
 
-  /* ---- shared dropdown machinery (model + effort) ---- */
+  /** v7: pill-title suffix announcing that a draft-chat pick applies to the
+   * upcoming conversation (' · 새 대화에 적용'); empty inside a session. */
+  function draftHint(sid) {
+    return sid ? '' : ` · ${T('options.draft_hint', '새 대화에 적용')}`;
+  }
+
+  /* ---- shared dropdown machinery (all pills) ---- */
 
   function closeDropdown(restoreFocus) {
     if (dropdown) dropdown.remove();
@@ -195,22 +223,32 @@
   /* ---- model pill + dropdown ---- */
 
   /** Model alias shown on the pill: per-session override, else the session's
-   * server-side model (listSessions), else the server default. */
+   * server-side model (listSessions), else the server default. Draft chat
+   * shows what the first send will apply: a pending pick, else the Settings
+   * default, else the server default. */
   function currentModel(sessionId) {
     if (sessionId) {
       const stored = lsGet(LS_MODEL + sessionId);
       if (stored) return stored;
       const sessionModel = window.App?.state?.sessions?.find?.((s) => s && s.id === sessionId)?.model;
       if (sessionModel) return sessionModel;
+      return window.App?.state?.defaultModel ?? null;
     }
-    return window.App?.state?.defaultModel ?? null;
+    return (
+      lsGet(LS_PENDING_MODEL) ??
+      window.Settings?.getDefaultModel?.() ??
+      window.App?.state?.defaultModel ??
+      null
+    );
   }
 
   function updateModelPill(sessionId) {
     if (!modelPill) return;
     const model = currentModel(sessionId);
     modelPill.textContent = model || T('options.model.none', '모델');
-    modelPill.title = T('options.model.pick_title', '모델 선택 — 현재 대화에 적용');
+    modelPill.title = sessionId
+      ? T('options.model.pick_title', '모델 선택 — 현재 대화에 적용')
+      : T('options.model.pick_title_new', '모델 선택 — 새 대화에 적용');
   }
 
   async function fillModelDropdown(box) {
@@ -235,7 +273,13 @@
   async function selectModel(alias) {
     const sid = activeSessionId();
     closeDropdown();
-    if (!sid) return; // draft chat: new-session model comes from Settings default
+    if (!sid) {
+      // Draft chat: one-shot pending pick — app.js applies it right after
+      // createSession via ChatOptions.applyPending().
+      lsSet(LS_PENDING_MODEL, alias);
+      updateModelPill(null);
+      return;
+    }
     try {
       await window.kimi.setSessionModel(sid, alias);
       lsSet(LS_MODEL + sid, alias);
@@ -245,10 +289,16 @@
     }
   }
 
-  /* ---- swarm toggle ---- */
+  /* ---- swarm pill + dropdown (v7: explicit ON/OFF, was a flip toggle) ---- */
 
   function swarmEnabled(sid) {
-    if (!sid) return lsGet(LS_DEFAULT_SWARM) === '1';
+    if (!sid) {
+      // Draft chat: a pending pick wins; otherwise mirror what app.js will
+      // apply on session creation — the settings default (스웜 기본값).
+      const pending = lsGet(LS_PENDING_SWARM);
+      if (pending === '1' || pending === '0') return pending === '1';
+      return lsGet(LS_DEFAULT_SWARM) === '1';
+    }
     const stored = lsGet(LS_SWARM + sid);
     if (stored === '1' || stored === '0') return stored === '1';
     // v4: fresh session with no per-session value — seed from the settings
@@ -304,20 +354,39 @@
     swarmBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
     const stateText = on ? T('options.swarm.on', 'ON') : T('options.swarm.off', 'OFF');
     swarmBtn.title =
-      T('options.swarm.title', '스웜 — 병렬 서브에이전트로 탐색/작업') + ` · ${stateText}`;
+      T('options.swarm.title', '스웜 — 병렬 서브에이전트로 탐색/작업') +
+      ` · ${stateText}` +
+      draftHint(sid);
     swarmBtn.setAttribute('aria-label', T('options.swarm.label', '스웜') + ' ' + stateText);
   }
 
-  async function toggleSwarm() {
+  function fillSwarmDropdown(box) {
+    const on = swarmEnabled(activeSessionId());
+    const onLabel = T('options.swarm.on', 'ON');
+    const offLabel = T('options.swarm.off', 'OFF');
+    const current = on ? onLabel : offLabel;
+    box.appendChild(
+      dropdownItem(onLabel, current, () => selectSwarm(true),
+        T('options.swarm.on_desc', SWARM_DESC_FALLBACKS.on))
+    );
+    box.appendChild(
+      dropdownItem(offLabel, current, () => selectSwarm(false),
+        T('options.swarm.off_desc', SWARM_DESC_FALLBACKS.off))
+    );
+  }
+
+  async function selectSwarm(next) {
     const sid = activeSessionId();
+    closeDropdown();
     if (!swarmAvailable()) return;
     if (!sid) {
-      const nextDefault = !swarmEnabled(null);
-      lsSet(LS_DEFAULT_SWARM, nextDefault ? '1' : '0');
+      // Draft chat: one-shot pending pick (replaces the old behavior of
+      // mutating the global settings default from the composer).
+      lsSet(LS_PENDING_SWARM, next ? '1' : '0');
       updateSwarm(null);
       return;
     }
-    const next = !swarmEnabled(sid);
+    if (next === swarmEnabled(sid)) return; // picked the current state
     lsSet(LS_SWARM + sid, next ? '1' : '0'); // optimistic
     updateSwarm(sid);
     try {
@@ -332,7 +401,8 @@
   /* ---- effort pill + dropdown (v3) ---- */
 
   function currentEffort(sid) {
-    const stored = sid ? lsGet(LS_EFFORT + sid) : null;
+    // Draft chat reads the one-shot pending level instead of a per-session key.
+    const stored = sid ? lsGet(LS_EFFORT + sid) : lsGet(LS_PENDING_EFFORT);
     return EFFORT_LEVELS.includes(stored) ? stored : DEFAULT_EFFORT;
   }
 
@@ -343,10 +413,11 @@
   function updateEffortPill(sid) {
     if (!effortPill || effortPill.hidden) return;
     effortPill.textContent = effortLabel(currentEffort(sid));
-    effortPill.title = T(
-      'options.effort.title',
-      '사고 수준 — 높을수록 깊이 추론하지만 느려질 수 있습니다'
-    );
+    effortPill.title =
+      T(
+        'options.effort.title',
+        '사고 수준 — 높을수록 깊이 추론하지만 느려질 수 있습니다'
+      ) + draftHint(sid);
   }
 
   function fillEffortDropdown(box) {
@@ -359,7 +430,11 @@
   async function selectEffort(level) {
     const sid = activeSessionId();
     closeDropdown();
-    if (!sid) return; // draft chat: nothing to persist against
+    if (!sid) {
+      lsSet(LS_PENDING_EFFORT, level); // draft chat: applied at session creation
+      updateEffortPill(null);
+      return;
+    }
     const prev = currentEffort(sid);
     lsSet(LS_EFFORT + sid, level); // optimistic
     updateEffortPill(sid);
@@ -383,7 +458,8 @@
   }
 
   function currentPermission(sid) {
-    const stored = sid ? lsGet(LS_PERM + sid) : null;
+    // Draft chat reads the one-shot pending mode instead of a per-session key.
+    const stored = sid ? lsGet(LS_PERM + sid) : lsGet(LS_PENDING_PERM);
     const modes = permissionModes();
     return modes.includes(stored) ? stored : DEFAULT_PERMISSION[permissionEngine()];
   }
@@ -399,7 +475,7 @@
   function updatePermissionPill(sid) {
     if (!permPill || permPill.hidden) return;
     permPill.textContent = permissionLabel(currentPermission(sid));
-    permPill.title = T('options.permission.title', '권한 — 도구 실행 승인 방식');
+    permPill.title = T('options.permission.title', '권한 — 도구 실행 승인 방식') + draftHint(sid);
   }
 
   function fillPermissionDropdown(box) {
@@ -414,7 +490,11 @@
   async function selectPermission(mode) {
     const sid = activeSessionId();
     closeDropdown();
-    if (!sid) return; // draft chat: nothing to persist against
+    if (!sid) {
+      lsSet(LS_PENDING_PERM, mode); // draft chat: applied at session creation
+      updatePermissionPill(null);
+      return;
+    }
     const prev = currentPermission(sid);
     lsSet(LS_PERM + sid, mode); // optimistic
     updatePermissionPill(sid);
@@ -424,6 +504,77 @@
       console.error('setSessionPermission failed', err);
       lsSet(LS_PERM + sid, prev); // revert
       updatePermissionPill(sid);
+    }
+  }
+
+  /* ---- draft-state pending options (v7) ---- */
+
+  /**
+   * Apply draft-chat option picks to a freshly created session, then clear
+   * them — pending values are one-shot, scoped to the next new chat. app.js
+   * runs this after the Settings defaults so a pending pick wins. Each option
+   * is best-effort: backend success also writes the per-session localStorage
+   * key so refresh(sid) shows the applied value; failures only log. Values
+   * invalid for the live engine are cleared without IPC.
+   */
+  async function applyPending(sessionId) {
+    if (!sessionId) return;
+    const pendingModel = lsGet(LS_PENDING_MODEL);
+    if (pendingModel != null) {
+      lsRemove(LS_PENDING_MODEL);
+      try {
+        if (typeof window.kimi?.setSessionModel === 'function') {
+          await window.kimi.setSessionModel(sessionId, pendingModel);
+          lsSet(LS_MODEL + sessionId, pendingModel);
+        }
+      } catch (err) {
+        console.error('applyPending: setSessionModel failed', err);
+      }
+    }
+    const pendingSwarm = lsGet(LS_PENDING_SWARM);
+    if (pendingSwarm != null) {
+      lsRemove(LS_PENDING_SWARM);
+      try {
+        if (
+          (pendingSwarm === '1' || pendingSwarm === '0') &&
+          typeof window.kimi?.setSessionSwarm === 'function'
+        ) {
+          await window.kimi.setSessionSwarm(sessionId, pendingSwarm === '1');
+          lsSet(LS_SWARM + sessionId, pendingSwarm);
+        }
+      } catch (err) {
+        console.error('applyPending: setSessionSwarm failed', err);
+      }
+    }
+    const pendingEffort = lsGet(LS_PENDING_EFFORT);
+    if (pendingEffort != null) {
+      lsRemove(LS_PENDING_EFFORT);
+      try {
+        if (
+          EFFORT_LEVELS.includes(pendingEffort) &&
+          typeof window.kimi?.setSessionEffort === 'function'
+        ) {
+          await window.kimi.setSessionEffort(sessionId, pendingEffort);
+          lsSet(LS_EFFORT + sessionId, pendingEffort);
+        }
+      } catch (err) {
+        console.error('applyPending: setSessionEffort failed', err);
+      }
+    }
+    const pendingPerm = lsGet(LS_PENDING_PERM);
+    if (pendingPerm != null) {
+      lsRemove(LS_PENDING_PERM);
+      try {
+        if (
+          permissionModes().includes(pendingPerm) &&
+          typeof window.kimi?.setSessionPermission === 'function'
+        ) {
+          await window.kimi.setSessionPermission(sessionId, pendingPerm);
+          lsSet(LS_PERM + sessionId, pendingPerm);
+        }
+      } catch (err) {
+        console.error('applyPending: setSessionPermission failed', err);
+      }
     }
   }
 
@@ -459,7 +610,9 @@
         swarmBtn.removeAttribute('aria-disabled');
         if (!swarmBtn.dataset.chatOptionsWired) {
           swarmBtn.dataset.chatOptionsWired = '1';
-          swarmBtn.addEventListener('click', () => void toggleSwarm());
+          swarmBtn.addEventListener('click', () =>
+            toggleDropdownFor(swarmBtn, fillSwarmDropdown)
+          );
         }
       }
     }
@@ -506,5 +659,5 @@
   // Language change: re-apply translated pill labels/tooltips in place.
   window.I18N?.onChange?.(() => refresh(activeSessionId()));
 
-  window.ChatOptions = { init, refresh };
+  window.ChatOptions = { init, refresh, applyPending };
 })();

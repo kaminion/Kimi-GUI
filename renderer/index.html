@@ -144,14 +144,16 @@
                composer, SCHEDULE while it runs with text typed (chat.js). -->
           <button id="send-btn" type="button" title="Send (↵)" aria-label="Send"
                   data-i18n-title="chat.send_title" data-i18n-aria="chat.send_aria"></button>
-          <!-- v3 composer options row: model / swarm / thinking-effort pills
-               (chat-options.js binds these; wraps below the textarea via CSS). -->
+          <!-- v3 composer options row (chat-options.js binds these; wraps below
+               the textarea via CSS). v7 order: model / thinking / permission /
+               swarm — model+thinking shape the answer, permission gates tool
+               approval, swarm rides last (cli-only; inert under direct). -->
           <div id="composer-options">
             <button id="model-select" class="pill" type="button"
                     title="Select model — applies to this chat" data-i18n-title="options.model.pick_title"></button>
-            <button id="swarm-toggle" class="pill" type="button" hidden></button>
             <button id="effort-select" class="pill" type="button" hidden></button>
             <button id="permission-select" class="pill" type="button" hidden></button>
+            <button id="swarm-toggle" class="pill" type="button" hidden></button>
             <span id="branch-indicator" role="status" hidden></span>
             <!-- context meter rides at the row's right edge (v5) -->
             <span id="context-meter" role="status"></span>
