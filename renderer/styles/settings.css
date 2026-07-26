@@ -420,6 +420,17 @@
   line-height: 14px;
 }
 
+/* Enabled/disabled state badge: explicit text, accent only when enabled. */
+.skill-state {
+  font-weight: 600;
+}
+
+.skill-state.on {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--border));
+}
+
 .skill-description {
   margin-top: 3px;
   overflow: hidden;

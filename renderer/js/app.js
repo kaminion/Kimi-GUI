@@ -162,7 +162,7 @@
           '모든 프로젝트에서 반복해서 사용할 새 Agent Skill을 만들어 주세요.\n\n' +
           'Skill 목적:\n- [원하는 작업과 결과를 적어 주세요]\n\n' +
           '요구사항:\n- 기존 Skills와 중복되는지 먼저 확인\n' +
-          '- ~/.config/agents/skills/<skill-name>/SKILL.md 형식으로 추가\n' +
+          '- ~/.kimi-code/skills/<skill-name>/SKILL.md 형식으로 추가\n' +
           '- 명확한 이름, 설명, 실행 절차와 안전 조건 포함\n' +
           '- 추가 후 사용 예시와 /skill:<skill-name> 명령 설명',
         );

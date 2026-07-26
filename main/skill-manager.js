@@ -3,7 +3,17 @@
 /**
  * Local Agent Skills repository.
  *
- * Kimi Code discovers skills from well-known user and project directories.
+ * Kimi Code discovers skills from exactly these directories (verified against
+ * the installed CLI's skill loader):
+ *
+ *   user     <KIMI_CODE_HOME|~/.kimi-code>/skills  (brand root)
+ *            ~/.agents/skills                      (shared agents root)
+ *   project  <project>/.kimi-code/skills           (brand root)
+ *            <project>/.agents/skills              (shared agents root)
+ *
+ * The CLI does not read ~/.kimi, ~/.claude, ~/.codex, or ~/.config/agents,
+ * so those roots are intentionally not scanned or installed into.
+ *
  * This module keeps those filesystem rules outside IPC/UI code and provides
  * serialized, recoverable mutations:
  *
@@ -22,17 +32,13 @@ const path = require('node:path');
 const { createHash, randomUUID } = require('node:crypto');
 
 const USER_ROOTS = [
-  { family: 'kimi', parts: ['.kimi'] },
-  { family: 'claude', parts: ['.claude'] },
-  { family: 'codex', parts: ['.codex'] },
-  { family: 'agents', parts: ['.config', 'agents'] },
-  { family: 'agents-legacy', parts: ['.agents'] },
+  // Brand home follows KIMI_CODE_HOME like the CLI does (default ~/.kimi-code).
+  { family: 'kimi', parts: ['.kimi-code'], brandHome: true },
+  { family: 'agents', parts: ['.agents'] },
 ];
 
 const PROJECT_ROOTS = [
-  { family: 'kimi', parts: ['.kimi'] },
-  { family: 'claude', parts: ['.claude'] },
-  { family: 'codex', parts: ['.codex'] },
+  { family: 'kimi', parts: ['.kimi-code'] },
   { family: 'agents', parts: ['.agents'] },
 ];
 
@@ -107,6 +113,12 @@ function isInside(parent, child) {
   return relative === '' || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative));
 }
 
+/** Kimi Code home directory (honors KIMI_CODE_HOME like the CLI does). */
+function kimiCodeHome(homeDir) {
+  const env = process.env.KIMI_CODE_HOME;
+  return env && env.trim() ? env.trim() : path.join(homeDir, '.kimi-code');
+}
+
 async function findProjectRoot(cwd) {
   if (typeof cwd !== 'string' || !cwd.trim()) return null;
   let current = path.resolve(cwd);
@@ -126,7 +138,7 @@ async function findProjectRoot(cwd) {
 }
 
 function rootSpec(base, scope, spec) {
-  const parent = path.join(base, ...spec.parts);
+  const parent = spec.brandHome ? kimiCodeHome(base) : path.join(base, ...spec.parts);
   return {
     scope,
     family: spec.family,
@@ -239,7 +251,7 @@ class SkillManager {
     this.records = new Map(records.map((record) => [record.id, record]));
     return {
       projectRoot,
-      userInstallRoot: path.join(this.homeDir, '.config', 'agents', 'skills'),
+      userInstallRoot: path.join(kimiCodeHome(this.homeDir), 'skills'),
       projectInstallRoot: projectRoot ? path.join(projectRoot, '.agents', 'skills') : null,
       skills: records.map(publicSkill),
     };
@@ -299,7 +311,7 @@ class SkillManager {
       const { projectRoot } = await this._roots(cwd);
       const destinationRoot = scope === 'project'
         ? (projectRoot ? path.join(projectRoot, '.agents', 'skills') : null)
-        : path.join(this.homeDir, '.config', 'agents', 'skills');
+        : path.join(kimiCodeHome(this.homeDir), 'skills');
       if (!destinationRoot) throw new Error('Choose a project directory before adding a project skill.');
 
       let markdownPath;

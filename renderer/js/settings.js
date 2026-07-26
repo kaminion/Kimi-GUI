@@ -647,7 +647,6 @@
 
   function skillFamilyLabel(family) {
     if (family === 'agents') return 'Agents';
-    if (family === 'agents-legacy') return 'Agents legacy';
     return family ? family.charAt(0).toUpperCase() + family.slice(1) : '';
   }
 
@@ -777,6 +776,13 @@
     const main = el('div', 'skill-main');
     const title = el('div', 'skill-title-row');
     title.appendChild(el('span', 'skill-name', skill.name));
+    title.appendChild(el(
+      'span',
+      `skill-badge skill-state${skill.enabled ? ' on' : ''}`,
+      skill.enabled
+        ? T('settings.skills.enabled', '활성')
+        : T('settings.skills.disabled', '비활성')
+    ));
     title.appendChild(el('span', 'skill-badge', skillScopeLabel(skill.scope)));
     if (skill.type === 'flow') title.appendChild(el('span', 'skill-badge', 'Flow'));
     const description = el('div', 'skill-description', skill.description);

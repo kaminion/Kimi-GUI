@@ -36,5 +36,22 @@ test('Ask Kimi starts a new chat with a scope-aware Skill template', () => {
   assert.match(chat, /function setComposerText\(text/);
   assert.match(i18n, /settings\.skills\.scope_user': '모든 프로젝트'/);
   assert.match(i18n, /settings\.skills\.scope_project': '현재 프로젝트'/);
+  // Templates must point at directories the Kimi CLI actually discovers.
   assert.match(i18n, /\.agents\/skills\/<skill-name>\/SKILL\.md/);
+  assert.match(i18n, /~\/\.kimi-code\/skills\/<skill-name>\/SKILL\.md/);
+  assert.doesNotMatch(i18n, /\.config\/agents\/skills/);
+  assert.doesNotMatch(app, /\.config\/agents\/skills/);
+});
+
+test('Each Skill row shows an explicit enabled/disabled state badge', () => {
+  const settings = read('renderer/js/settings.js');
+  const css = read('renderer/styles/settings.css');
+  const i18n = read('renderer/js/i18n.js');
+
+  assert.match(settings, /skill-badge skill-state\$\{skill\.enabled \? ' on' : ''\}/);
+  assert.match(settings, /row\.classList\.toggle\('disabled', !skill\.enabled\)/);
+  assert.match(css, /\.skill-state\.on \{/);
+  assert.match(css, /\.skill-row\.disabled \.skill-main \{/);
+  assert.match(i18n, /'settings\.skills\.enabled': '활성'/);
+  assert.match(i18n, /'settings\.skills\.disabled': '비활성'/);
 });

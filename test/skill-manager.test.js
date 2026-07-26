@@ -49,7 +49,7 @@ test('installs, disables, and re-enables a user skill without overwriting', asyn
   });
   assert.equal(installed.name, 'code-review');
   assert.equal(installed.enabled, true);
-  assert.match(installed.path, /[.]config[/\\]agents[/\\]skills[/\\]code-review$/);
+  assert.match(installed.path, /[.]kimi-code[/\\]skills[/\\]code-review$/);
 
   const disabled = await manager.setEnabled({ id: installed.id, enabled: false });
   assert.equal(disabled.enabled, false);
@@ -116,4 +116,59 @@ test('rejects folders without SKILL.md and symbolic-link sources', async (t) => 
     manager.install({ sourcePath: linked, kind: 'directory' }),
     /Choose a local skill folder/,
   );
+});
+
+test('lists only the discovery roots the Kimi CLI actually reads', async (t) => {
+  const root = tempRoot(t);
+  const home = path.join(root, 'home');
+  const project = path.join(root, 'project');
+  fs.mkdirSync(path.join(project, '.git'), { recursive: true });
+
+  // Read by the CLI: brand (.kimi-code) and shared agents (.agents) roots.
+  makeSkill(path.join(home, '.kimi-code', 'skills'), 'user-brand');
+  makeSkill(path.join(home, '.agents', 'skills'), 'user-shared');
+  makeSkill(path.join(project, '.kimi-code', 'skills'), 'project-brand');
+  makeSkill(path.join(project, '.agents', 'skills'), 'project-shared');
+  // Never read by the CLI: these must not surface in the manager.
+  makeSkill(path.join(home, '.kimi', 'skills'), 'legacy-kimi');
+  makeSkill(path.join(home, '.claude', 'skills'), 'claude-skill');
+  makeSkill(path.join(home, '.codex', 'skills'), 'codex-skill');
+  makeSkill(path.join(home, '.config', 'agents', 'skills'), 'config-agents');
+  makeSkill(path.join(project, '.claude', 'skills'), 'project-claude');
+  makeSkill(path.join(project, '.codex', 'skills'), 'project-codex');
+
+  const manager = new SkillManager({ homeDir: home, trashItem: async () => {} });
+  const { skills } = await manager.list({ cwd: project });
+  const byName = new Map(skills.map((skill) => [skill.name, skill]));
+
+  assert.deepEqual([...byName.keys()].sort(), [
+    'project-brand',
+    'project-shared',
+    'user-brand',
+    'user-shared',
+  ]);
+  assert.equal(byName.get('user-brand').family, 'kimi');
+  assert.equal(byName.get('user-brand').scope, 'user');
+  assert.equal(byName.get('user-shared').family, 'agents');
+  assert.equal(byName.get('project-brand').family, 'kimi');
+  assert.equal(byName.get('project-brand').scope, 'project');
+  assert.equal(byName.get('project-shared').family, 'agents');
+});
+
+test('user brand root honors KIMI_CODE_HOME like the CLI', async (t) => {
+  const root = tempRoot(t);
+  const home = path.join(root, 'home');
+  const brandHome = path.join(root, 'custom-kimi-home');
+  makeSkill(path.join(brandHome, 'skills'), 'env-brand');
+  makeSkill(path.join(home, '.kimi-code', 'skills'), 'default-brand');
+
+  process.env.KIMI_CODE_HOME = brandHome;
+  t.after(() => { delete process.env.KIMI_CODE_HOME; });
+
+  const manager = new SkillManager({ homeDir: home, trashItem: async () => {} });
+  const { skills, userInstallRoot } = await manager.list({});
+  const names = skills.map((skill) => skill.name);
+  assert.ok(names.includes('env-brand'));
+  assert.ok(!names.includes('default-brand'));
+  assert.equal(userInstallRoot, path.join(brandHome, 'skills'));
 });
