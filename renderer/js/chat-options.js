@@ -17,9 +17,10 @@
  * when the direct engine omits it. Fresh cli sessions seed their on/off state
  * from localStorage 'kimi.defaultSwarm' (settings '스웜 기본값') when no
  * per-session value exists. State is per-session, optimistic UI with revert
- * on failure. v7: the pill opens an explicit ON/OFF dropdown with desc lines
- * (same pattern as effort/permission) — the daemon's agent_config.swarm_mode
- * is boolean-only (verified: openapi 0.28.1 profile schema, protocol.md), so
+ * on failure. v8: the pill is a single-click flip toggle again (v7 tried an
+ * ON/OFF dropdown), now with an always-visible switch + ON/OFF state chip so
+ * the current state is unmistakable. The daemon's agent_config.swarm_mode is
+ * boolean-only (verified: openapi 0.28.1 profile schema, protocol.md), so
  * there are no richer swarm parameters (agent count etc.) to expose.
  *
  * #effort-select (v3) is shown ONLY when window.kimi.setSessionEffort exists.
@@ -85,10 +86,6 @@
     auto: '도구 실행을 자동 승인합니다',
     manual: '도구 실행마다 확인합니다',
     yolo: '승인 없이 전부 실행합니다',
-  };
-  const SWARM_DESC_FALLBACKS = {
-    on: '병렬 서브에이전트로 탐색/작업합니다',
-    off: '단일 에이전트로 실행합니다',
   };
 
   const $ = (sel) => document.querySelector(sel);
@@ -289,7 +286,11 @@
     }
   }
 
-  /* ---- swarm pill + dropdown (v7: explicit ON/OFF, was a flip toggle) ---- */
+  /* ---- swarm pill: flip toggle with explicit state (v8) ----
+   * v7 tried an explicit ON/OFF dropdown; a single-click flip toggle with an
+   * always-visible switch + ON/OFF chip proved clearer. The daemon's
+   * agent_config.swarm_mode is a plain boolean, so there are no richer swarm
+   * parameters (agent count etc.) to expose. */
 
   function swarmEnabled(sid) {
     if (!sid) {
@@ -322,12 +323,19 @@
     const label = document.createElement('span');
     label.className = 'swarm-label';
     label.textContent = T('options.swarm.label', '스웜');
+    // Always-visible switch: track + knob, accent-filled and knob right when ON.
+    const track = document.createElement('span');
+    track.className = 'swarm-switch';
+    track.setAttribute('aria-hidden', 'true');
+    const knob = document.createElement('span');
+    knob.className = 'swarm-knob';
+    track.appendChild(knob);
     const state = document.createElement('span');
     state.className = 'swarm-state';
     state.textContent = on
       ? T('options.swarm.on', 'ON')
       : T('options.swarm.off', 'OFF');
-    swarmBtn.append(label, state);
+    swarmBtn.append(label, track, state);
     swarmBtn.classList.toggle('on', on);
     swarmBtn.classList.toggle('off', !on);
   }
@@ -358,21 +366,6 @@
       ` · ${stateText}` +
       draftHint(sid);
     swarmBtn.setAttribute('aria-label', T('options.swarm.label', '스웜') + ' ' + stateText);
-  }
-
-  function fillSwarmDropdown(box) {
-    const on = swarmEnabled(activeSessionId());
-    const onLabel = T('options.swarm.on', 'ON');
-    const offLabel = T('options.swarm.off', 'OFF');
-    const current = on ? onLabel : offLabel;
-    box.appendChild(
-      dropdownItem(onLabel, current, () => selectSwarm(true),
-        T('options.swarm.on_desc', SWARM_DESC_FALLBACKS.on))
-    );
-    box.appendChild(
-      dropdownItem(offLabel, current, () => selectSwarm(false),
-        T('options.swarm.off_desc', SWARM_DESC_FALLBACKS.off))
-    );
   }
 
   async function selectSwarm(next) {
@@ -610,8 +603,9 @@
         swarmBtn.removeAttribute('aria-disabled');
         if (!swarmBtn.dataset.chatOptionsWired) {
           swarmBtn.dataset.chatOptionsWired = '1';
+          // v8: single click flips the state (was an ON/OFF dropdown in v7).
           swarmBtn.addEventListener('click', () =>
-            toggleDropdownFor(swarmBtn, fillSwarmDropdown)
+            void selectSwarm(!swarmEnabled(activeSessionId()))
           );
         }
       }

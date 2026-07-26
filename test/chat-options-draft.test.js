@@ -2,7 +2,7 @@
 
 /**
  * chat-options-draft.test.js — DOM harness for the draft-chat (no session yet)
- * option picks in renderer/js/chat-options.js, plus the v7 swarm dropdown.
+ * option picks in renderer/js/chat-options.js, plus the v8 swarm flip toggle.
  * Same hand-rolled DOM stub pattern as permission-pill.test.js (no jsdom in
  * this repo): the real IIFE source runs inside a vm context.
  *
@@ -15,8 +15,8 @@
  *  - ChatOptions.applyPending(sid) applies the picks to a freshly created
  *    session (IPC + per-session keys), clears the pending keys, and drops
  *    engine-foreign/invalid values without IPC;
- *  - in-session, the swarm pill is an explicit ON/OFF dropdown that applies
- *    immediately and reverts on IPC failure (v7: was a flip toggle).
+ *  - in-session, the swarm pill is a single-click flip toggle that applies
+ *    immediately and reverts on IPC failure (v8: dropdown removed again).
  */
 
 const test = require('node:test');
@@ -210,24 +210,25 @@ test('draft chat: thinking level + permission picks become one-shot pending valu
   assert.deepEqual(w.calls.setSessionPermission, [], 'no IPC before the session exists');
 });
 
-test('draft chat: swarm dropdown stores a pending pick, not the settings default', async () => {
+test('draft chat: swarm toggle stores a pending pick, not the settings default', async () => {
   const w = makeWorld({ engine: 'cli' });
   w.window.ChatOptions.init();
   const btn = w.els['swarm-toggle'];
   assert.equal(btn.hidden, false);
   assert.equal(swarmState(btn), 'OFF');
 
-  btn.click();
+  btn.click(); // flip ON — no dropdown involved
   await flush();
-  const opts = dropdownOptions(openDropdown(w.body));
-  assert.deepEqual(opts.map((o) => o.label), ['ON', 'OFF']);
-  assert.ok(opts.every((o) => typeof o.desc === 'string' && o.desc.length > 0));
-  opts[0].item.click(); // ON
-  await flush();
+  assert.equal(openDropdown(w.body), null);
   assert.equal(w.storage.get('kimi.pendingSwarm'), '1');
   assert.equal(w.storage.get('kimi.defaultSwarm'), undefined, 'global default untouched');
   assert.deepEqual(w.calls.setSessionSwarm, [], 'no IPC before the session exists');
   assert.equal(swarmState(btn), 'ON');
+
+  btn.click(); // flip back OFF
+  await flush();
+  assert.equal(w.storage.get('kimi.pendingSwarm'), '0');
+  assert.equal(swarmState(btn), 'OFF');
 });
 
 test('draft chat: swarm pill seeds from the settings default when no pending pick', () => {
@@ -312,9 +313,9 @@ test('applyPending drops engine-foreign or invalid pending values without IPC', 
   assert.equal(w.storage.get('kimi.pendingPerm'), undefined);
 });
 
-/* ---- in-session swarm dropdown (v7: was a flip toggle) ------------------- */
+/* ---- in-session swarm toggle (v8: single-click flip) --------------------- */
 
-test('in-session: swarm dropdown applies immediately and reverts on failure', async () => {
+test('in-session: swarm toggle applies immediately and reverts on failure', async () => {
   const w = makeWorld({
     engine: 'cli',
     activeId: 'sid1',
@@ -324,10 +325,9 @@ test('in-session: swarm dropdown applies immediately and reverts on failure', as
   const btn = w.els['swarm-toggle'];
   assert.equal(swarmState(btn), 'OFF');
 
-  btn.click();
+  btn.click(); // flip ON
   await flush();
-  dropdownOptions(openDropdown(w.body))[0].item.click(); // ON
-  await flush();
+  assert.equal(openDropdown(w.body), null);
   assert.deepEqual(w.calls.setSessionSwarm, [['sid1', true]]);
   assert.equal(w.storage.get('kimi.sessionSwarm.sid1'), '1');
   assert.equal(swarmState(btn), 'ON');
@@ -341,8 +341,6 @@ test('in-session: swarm dropdown applies immediately and reverts on failure', as
   });
   failing.window.ChatOptions.init();
   failing.els['swarm-toggle'].click();
-  await flush();
-  dropdownOptions(openDropdown(failing.body))[0].item.click(); // ON
   await flush();
   assert.equal(failing.storage.get('kimi.sessionSwarm.sid1'), '0', 'reverted');
   assert.equal(swarmState(failing.els['swarm-toggle']), 'OFF');
