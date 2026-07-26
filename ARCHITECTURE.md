@@ -70,9 +70,10 @@ class KimiClient extends EventEmitter {
   request(method, path, body?)              // fetch wrapper, unwraps envelope, throws on code!=0
   healthz(); meta(); auth();
   listSessions(); createSession({ cwd, model? }); getSession(id); getProfile(id);
-  getMessages(id); sendPrompt(id, text); steer(id, text);
-  holdSteer(id, promptId); resumeSteer(id, promptId);
-  updateSteer(id, promptId, text); deleteSteer(id, promptId); abort(id);
+  getMessages(id); sendPrompt(id, text);
+  queuePrompt(id, text); listQueuedPrompts(id);      // scheduled messages ("예약된 메시지")
+  updateQueuedPrompt(id, promptId, text); cancelQueuedPrompt(id, promptId);
+  steerQueuedPrompts(id, promptIds); abort(id);      // steerQueued = "run now" mid-turn
   listApprovals(id); respondApproval(id, approvalId, decision);
   listQuestions(id); answerQuestion(id, tail, body);
   connect();              // open WS, client_hello, auto resubscribe
@@ -106,11 +107,11 @@ listSlashCommands({ sessionId?, cwd? }) -> { commands[] }
 getMessages(sessionId) -> [message]
 getProfile(sessionId) -> profile        // includes usage
 sendPrompt(sessionId, text)
-steer(sessionId, text)
-holdSteer(sessionId, promptId)
-resumeSteer(sessionId, promptId)
-updateSteer(sessionId, promptId, text)
-deleteSteer(sessionId, promptId)
+scheduleMessage(sessionId, text)                    // park behind the active turn
+listScheduled(sessionId) -> [{ prompt_id, text, created_at }]
+updateScheduled(sessionId, promptId, text)
+cancelScheduled(sessionId, promptId)
+runScheduled(sessionId, promptId)                   // "run now": steer mid-turn
 abort(sessionId)
 respondApproval(sessionId, approvalId, decision)   // decision: 'approve' | 'reject' (verify in protocol.md)
 answerQuestion(sessionId, tail, body)

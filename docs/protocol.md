@@ -105,11 +105,11 @@ Errors keep HTTP 200 (mostly) with `code != 0`, `data: null`, e.g.
 - `POST /sessions/{id}/prompts/{prompt_id}:abort` → `{aborted: true, at_seq}`
   (works for queued; returned `50001` when racing a running turn — prefer the
   session-level abort).
-- Kimi-GUI keeps a CLI steering prompt queued for a four-second edit window
-  before calling `prompts:steer`. Editing submits a replacement prompt and
-  aborts the previous queued prompt only after the replacement succeeds.
-  Deleting aborts the queued prompt. Opening the editor pauses promotion until
-  the user saves or cancels.
+- Kimi-GUI keeps prompts queued as scheduled messages ("예약된 메시지") that
+  the daemon starts automatically when the active turn ends. Editing submits
+  a replacement prompt and aborts the previous queued prompt only after the
+  replacement succeeds. Cancelling aborts the queued prompt. "Run now"
+  promotes it into the active turn via `prompts:steer`.
 - **`POST /sessions/{id}:abort`** body `{}` → `{aborted: true}` — **the
   reliable "stop" button** (verified mid-stream; see event sequence below).
   This is what the official UI falls back to.
@@ -246,8 +246,8 @@ turn.step.completed → turn.step.started (next step) → … → prompt.complet
 
 POST prompt while busy → `status:"queued"`; POST `prompts:steer` →
 `prompt.steered {activePromptId, promptIds, content:[…]}` — merged into the
-active turn. Kimi-GUI delays the second call for four seconds so a queued
-adjustment can be edited or deleted first.
+active turn. Kimi-GUI leaves queued prompts parked as scheduled messages and
+calls `prompts:steer` only for an explicit "run now".
 
 ### Tool-call event shapes (verified)
 

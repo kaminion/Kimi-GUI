@@ -17,7 +17,6 @@
 const { EventEmitter } = require('node:events');
 const { spawn } = require('node:child_process');
 const { randomUUID } = require('node:crypto');
-const { STEER_EDIT_WINDOW_MS } = require('./steer-queue');
 
 const API = '/api/v1';
 const BANNER_RE = /(https?:\/\/[\w.-]+):(\d+)\/#token=([^\s]+)/;
@@ -32,6 +31,16 @@ class KimiApiError extends Error {
     this.status = status;   // HTTP status, if any
     this.path = path;
   }
+}
+
+/** Flatten a prompt's content parts into the plain text the queue lists. */
+function textOfPromptContent(content) {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  return content
+    .map((part) => (part && part.type === 'text' && typeof part.text === 'string' ? part.text : ''))
+    .filter(Boolean)
+    .join('\n');
 }
 
 class KimiClient extends EventEmitter {
@@ -54,11 +63,6 @@ class KimiClient extends EventEmitter {
 
     this.child = null;             // set by launch()
     this._defaultModel = null;     // cached from auth()
-
-    // Queued steering prompts remain editable for a short grace period
-    // before they are promoted into the active turn.
-    this.pendingSteers = new Map(); // sessionId + promptId -> record
-    this.steerEditWindowMs = STEER_EDIT_WINDOW_MS;
   }
 
   // ---------------------------------------------------------------- spawn --
@@ -306,77 +310,38 @@ class KimiClient extends EventEmitter {
     });
   }
 
-  _steerKey(sessionId, promptId) {
-    return `${sessionId}\u0000${promptId}`;
+  /** GET /sessions/{id}/prompts — {active: {prompt_id,…}|null, queued: [...]}. */
+  listPrompts(id) {
+    return this.request('GET', `/sessions/${encodeURIComponent(id)}/prompts`);
   }
 
-  _emitPromptEvent(sessionId, type, payload = {}) {
-    this.emit('event', {
-      sessionId,
-      event: { type, payload: { type, ...payload } },
-    });
+  /**
+   * Scheduled messages waiting for the active turn to end. The daemon owns
+   * the FIFO queue (a queued prompt starts automatically once the turn
+   * finishes), so this live read doubles as the renderer's source of truth
+   * across session switches and reloads.
+   */
+  async listQueuedPrompts(id) {
+    const d = await this.listPrompts(id);
+    const queued = Array.isArray(d?.queued) ? d.queued : [];
+    return queued
+      .map((prompt) => ({
+        prompt_id: prompt.prompt_id ?? prompt.promptId ?? null,
+        text: textOfPromptContent(prompt.content),
+        created_at: prompt.created_at ?? prompt.createdAt ?? null,
+      }))
+      .filter((item) => item.prompt_id);
   }
 
-  _scheduleSteer(record) {
-    if (record.timer) clearTimeout(record.timer);
-    record.state = 'queued';
-    record.timer = setTimeout(() => {
-      record.timer = null;
-      void this._promoteSteer(record);
-    }, this.steerEditWindowMs);
-  }
-
-  _trackSteer(sessionId, submitted, text) {
-    const record = {
-      sessionId,
-      promptId: submitted.prompt_id,
-      text,
-      state: 'queued',
-      timer: null,
-    };
-    this.pendingSteers.set(this._steerKey(sessionId, record.promptId), record);
-    this._scheduleSteer(record);
-    return record;
-  }
-
-  _pendingSteer(sessionId, promptId) {
-    const record = this.pendingSteers.get(this._steerKey(sessionId, promptId));
-    if (!record || !['queued', 'held'].includes(record.state)) {
-      const error = new Error('This work adjustment is no longer waiting.');
-      error.code = 'STEER_NOT_PENDING';
-      throw error;
-    }
-    return record;
-  }
-
-  async _promoteSteer(record) {
-    const key = this._steerKey(record.sessionId, record.promptId);
-    if (this.pendingSteers.get(key) !== record || record.state !== 'queued') return;
-
-    record.state = 'sending';
-    this._emitPromptEvent(record.sessionId, 'prompt.steer_sending', {
-      prompt_id: record.promptId,
-    });
-    try {
-      await this.request(
-        'POST',
-        `/sessions/${encodeURIComponent(record.sessionId)}/prompts:steer`,
-        { prompt_ids: [record.promptId] },
-      );
-      this.pendingSteers.delete(key);
-      this._emitPromptEvent(record.sessionId, 'prompt.steered', {
-        prompt_id: record.promptId,
-        prompt_ids: [record.promptId],
-      });
-    } catch (err) {
-      // The daemon keeps the original prompt queued when promotion fails.
-      // Keep it editable/deletable instead of silently losing control of it.
-      record.state = 'queued';
-      this._emitPromptEvent(record.sessionId, 'prompt.steer_failed', {
-        prompt_id: record.promptId,
-        message: err.message,
-      });
-    }
+  /**
+   * Schedule a message behind the active turn. While a turn runs the daemon
+   * queues the prompt (status 'queued') and starts it automatically when the
+   * turn ends; an idle session starts it immediately (status 'running').
+   */
+  queuePrompt(id, text) {
+    const value = String(text ?? '').trim();
+    if (!value) return Promise.reject(new Error('Scheduled message text is empty.'));
+    return this.sendPrompt(id, value);
   }
 
   abortPrompt(id, promptId) {
@@ -388,82 +353,44 @@ class KimiClient extends EventEmitter {
   }
 
   /**
-   * Queue text for the active turn. Promotion waits briefly so the renderer
-   * can offer edit and delete actions before the adjustment is consumed.
-   */
-  async steer(id, text) {
-    const value = String(text ?? '').trim();
-    if (!value) throw new Error('Steer text is empty.');
-    const submitted = await this.sendPrompt(id, value);
-    if (submitted?.status === 'queued' && submitted.prompt_id) {
-      this._trackSteer(id, submitted, value);
-    }
-    return submitted;
-  }
-
-  /** Pause automatic promotion while the user edits a queued adjustment. */
-  holdSteer(id, promptId) {
-    const record = this._pendingSteer(id, promptId);
-    if (record.timer) { clearTimeout(record.timer); record.timer = null; }
-    record.state = 'held';
-    return { prompt_id: promptId, status: 'held' };
-  }
-
-  /** Resume automatic promotion after the user cancels an edit. */
-  resumeSteer(id, promptId) {
-    const record = this._pendingSteer(id, promptId);
-    this._scheduleSteer(record);
-    return { prompt_id: promptId, status: 'queued' };
-  }
-
-  /**
-   * Replace a queued steering prompt. The replacement is submitted before
+   * Replace a queued scheduled message. The replacement is submitted before
    * the old prompt is aborted so a transient submit failure preserves the
-   * user's original adjustment.
+   * user's original message.
    */
-  async updateSteer(id, promptId, text) {
+  async updateQueuedPrompt(id, promptId, text) {
     const value = String(text ?? '').trim();
-    if (!value) throw new Error('Steer text is empty.');
-    const record = this._pendingSteer(id, promptId);
-    const previousState = record.state;
-    record.state = 'updating';
-    if (record.timer) { clearTimeout(record.timer); record.timer = null; }
-
+    if (!value) throw new Error('Scheduled message text is empty.');
     let replacement = null;
     try {
       replacement = await this.sendPrompt(id, value);
       await this.abortPrompt(id, promptId);
-      this.pendingSteers.delete(this._steerKey(id, promptId));
-
-      if (replacement?.status === 'queued' && replacement.prompt_id) {
-        this._trackSteer(id, replacement, value);
-      }
       return { ...replacement, replaced_prompt_id: promptId };
     } catch (err) {
       if (replacement?.status === 'queued' && replacement.prompt_id) {
         try { await this.abortPrompt(id, replacement.prompt_id); } catch { /* best-effort rollback */ }
       }
-      record.state = previousState;
-      if (previousState === 'queued') this._scheduleSteer(record);
       throw err;
     }
   }
 
-  /** Remove a queued steering prompt before it is promoted. */
-  async deleteSteer(id, promptId) {
-    const record = this._pendingSteer(id, promptId);
-    const previousState = record.state;
-    record.state = 'deleting';
-    if (record.timer) { clearTimeout(record.timer); record.timer = null; }
-    try {
-      const result = await this.abortPrompt(id, promptId);
-      this.pendingSteers.delete(this._steerKey(id, promptId));
-      return { ...result, deleted: true, prompt_id: promptId };
-    } catch (err) {
-      record.state = previousState;
-      if (previousState === 'queued') this._scheduleSteer(record);
-      throw err;
-    }
+  /** Remove a queued scheduled message before the daemon starts it. */
+  async cancelQueuedPrompt(id, promptId) {
+    const result = await this.abortPrompt(id, promptId);
+    return { ...result, deleted: true, prompt_id: promptId };
+  }
+
+  /**
+   * "Run now": merge queued scheduled messages into the active turn instead
+   * of waiting for the turn to end. The daemon emits prompt.steered.
+   */
+  steerQueuedPrompts(id, promptIds) {
+    const ids = (Array.isArray(promptIds) ? promptIds : [promptIds]).filter(Boolean);
+    if (!ids.length) return Promise.reject(new Error('No queued prompt to steer.'));
+    return this.request(
+      'POST',
+      `/sessions/${encodeURIComponent(id)}/prompts:steer`,
+      { prompt_ids: ids },
+    );
   }
 
   /** Stop the current turn. Session-level REST abort (WS abort is ignored by the daemon). */
@@ -657,10 +584,6 @@ class KimiClient extends EventEmitter {
   /** Close the WS, ask the daemon to exit, and kill the child process. */
   async shutdown() {
     this.closed = true;
-    for (const record of this.pendingSteers.values()) {
-      if (record.timer) clearTimeout(record.timer);
-    }
-    this.pendingSteers.clear();
     if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
     try { this.ws?.close(); } catch { /* ignore */ }
     this.ws = null;

@@ -56,12 +56,17 @@ const api = {
   getMessages: (sessionId) => invoke('getMessages', sessionId),
   getProfile: (sessionId) => invoke('getProfile', sessionId),
   sendPrompt: (sessionId, text) => invoke('sendPrompt', sessionId, text),
-  steer: (sessionId, text) => invoke('steer', sessionId, text),
-  holdSteer: (sessionId, promptId) => invoke('holdSteer', sessionId, promptId),
-  resumeSteer: (sessionId, promptId) => invoke('resumeSteer', sessionId, promptId),
-  updateSteer: (sessionId, promptId, text) =>
-    invoke('updateSteer', sessionId, promptId, text),
-  deleteSteer: (sessionId, promptId) => invoke('deleteSteer', sessionId, promptId),
+  // Scheduled messages ("예약된 메시지"): busy-turn sends park per session and
+  // run when the turn ends; runScheduled merges one into the active turn now.
+  scheduleMessage: (sessionId, text) => invoke('scheduleMessage', sessionId, text),
+  // -> [{ prompt_id, text, created_at }] for the session's waiting messages
+  listScheduled: (sessionId) => invoke('listScheduled', sessionId),
+  updateScheduled: (sessionId, promptId, text) =>
+    invoke('updateScheduled', sessionId, promptId, text),
+  cancelScheduled: (sessionId, promptId) =>
+    invoke('cancelScheduled', sessionId, promptId),
+  runScheduled: (sessionId, promptId) =>
+    invoke('runScheduled', sessionId, promptId),
   abort: (sessionId) => invoke('abort', sessionId),
   // decision: 'approve' | 'reject'
   respondApproval: (sessionId, approvalId, decision) =>

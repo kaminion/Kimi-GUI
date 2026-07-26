@@ -44,9 +44,11 @@
  *     cache_read_tokens, cache_creation_tokens, context_tokens, context_limit}}
  *   {type:'status', ready, error?}
  *
- * One active turn per session: concurrent sendPrompt/steer rejects with a
- * friendly error event + a rejected promise. respondApproval resolves the
- * pending tool approval; abort interrupts the turn via AbortController.
+ * One active turn per session: concurrent sendPrompt rejects with a
+ * friendly error event + a rejected promise, while a message sent mid-turn is
+ * parked in the session's scheduled queue (scheduleMessage) and runs as a
+ * continuation when the turn ends. respondApproval resolves the pending tool
+ * approval; abort interrupts the turn via AbortController.
  *
  * Never logs tokens or credential contents.
  */
@@ -57,7 +59,7 @@ const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 
 const { resolveKimiPath } = require('./server-manager');
-const { DirectSteerQueue } = require('./steer-queue');
+const { DirectSteerQueue, ScheduledQueue } = require('./steer-queue');
 const { authRequiredError, requiresCliLogin } = require('./cli-auth-state');
 
 // ---------------------------------------------------------------------------
@@ -118,6 +120,16 @@ const CLI_HEALTH_TIMEOUT_MS = 2500;
 
 // direct engine state: sessionId -> { controller, turnId, contextLimit, approvals: Map<approvalId, resolve> }
 const activeTurns = new Map();
+// Per-session scheduled messages ("예약된 메시지", both engines). They wait
+// for the active turn to end, then run one at a time as continuation prompts
+// (direct) or via the daemon's own FIFO queue (cli).
+const scheduledQueues = new Map(); // sessionId -> ScheduledQueue (direct engine)
+// cli engine: last snapshot of each session's daemon-side queued prompts.
+// Queue-affecting WS events trigger a refresh whose diff becomes
+// scheduled.updated (items + departed with reason).
+const cliScheduledCache = new Map(); // sessionId -> [{prompt_id, text, created_at}]
+const cliScheduledRefreshTimers = new Map(); // sessionId -> Timeout
+const SCHEDULED_REFRESH_DEBOUNCE_MS = 120;
 // Successful direct-module requires are cached; failures are retried on each
 // call (B1/B2 may land later in a dev checkout).
 const directMods = { storeMod: null, store: null, client: null, auth: null };
@@ -540,7 +552,10 @@ function wireCliEvents(client, child, gen, lifecycle) {
       console.error(`[backend] cli event forwarding failed: ${err.message}`);
     }
   };
-  client.on('event', safe(({ sessionId, event } = {}) => emitSession(sessionId, event)));
+  client.on('event', safe(({ sessionId, event } = {}) => {
+    emitSession(sessionId, event);
+    maybeRefreshCliScheduled(sessionId, event);
+  }));
   client.on('usage', safe(({ sessionId, usage } = {}) => emit({ type: 'usage', sessionId, usage })));
   client.on(
     'status',
@@ -624,6 +639,9 @@ async function shutdownCli() {
   cli.client = null;
   cli.child = null;
   cli.ready = false;
+  for (const timer of cliScheduledRefreshTimers.values()) clearTimeout(timer);
+  cliScheduledRefreshTimers.clear();
+  cliScheduledCache.clear();
   if (!client) return;
   try {
     // KimiClient.shutdown() is bounded (POST /shutdown courtesy + SIGTERM,
@@ -1101,7 +1119,7 @@ async function directSendPrompt(sessionId, text) {
     turnId,
     contextLimit: modelContextLimit(session),
     approvals: new Map(),
-    steerQueue: new DirectSteerQueue({ signal: controller.signal }),
+    steerQueue: new DirectSteerQueue({ signal: controller.signal, editWindowMs: 0 }),
     // Permission flag snapshot for requireApproval ('ask' | 'auto'); the hook
     // also re-reads the store live so mid-turn pill changes take effect.
     store,
@@ -1175,6 +1193,16 @@ async function directSendPrompt(sessionId, text) {
             break;
           }
         }
+        // Scheduled messages run next, one per turn, until the queue drains.
+        if (!continuation && !controller.signal.aborted) {
+          const next = scheduledQueues.get(sessionId)?.takeNext();
+          if (next) {
+            emitScheduledUpdated(sessionId, [
+              { prompt_id: next.id, text: next.text, reason: 'started' },
+            ]);
+            continuation = next.text;
+          }
+        }
         if (!continuation) break;
         prompt = continuation;
       }
@@ -1223,6 +1251,181 @@ function emitDirectSteered(sessionId, ready) {
 }
 
 // ---------------------------------------------------------------------------
+// Scheduled messages ("예약된 메시지") — per-session queue behind the turn
+// ---------------------------------------------------------------------------
+// A message sent while the session is busy waits as a scheduled card instead
+// of steering mid-turn. It leaves the queue exactly one way per reason:
+//   'started' — the turn ended and it runs now (direct continuation, or the
+//               daemon's FIFO picked it up),
+//   'steered' — the user's "run now" merged it into the active turn,
+//   'aborted' — cancelled (locally or remotely),
+//   'gone'    — vanished from the daemon queue for an unknown reason.
+// Every queue mutation pushes scheduled.updated {items, departed?} so the
+// renderer mirrors main's authoritative list across session switches.
+
+function getScheduledQueue(sessionId) {
+  let queue = scheduledQueues.get(sessionId);
+  if (!queue) {
+    queue = new ScheduledQueue();
+    scheduledQueues.set(sessionId, queue);
+  }
+  return queue;
+}
+
+function emitScheduledUpdated(sessionId, departed) {
+  emitSession(sessionId, {
+    type: 'scheduled.updated',
+    session_id: sessionId,
+    items: scheduledQueues.get(sessionId)?.list() ?? [],
+    ...(departed && departed.length ? { departed } : {}),
+  });
+}
+
+/** Debounced re-read of the daemon queue after a queue-affecting WS event. */
+function maybeRefreshCliScheduled(sessionId, event) {
+  if (currentEngine !== 'cli' || !sessionId || !event) return;
+  const type = String(event.type ?? '');
+  const data = (event.payload && typeof event.payload === 'object') ? event.payload : event;
+  let trigger = null;
+  if (type === 'turn.started') {
+    trigger = { type };
+  } else if (type === 'prompt.steered') {
+    const many = data.prompt_ids ?? data.promptIds ?? [];
+    const one = data.prompt_id ?? data.promptId;
+    trigger = { type, promptIds: new Set([...(Array.isArray(many) ? many : []), ...(one ? [one] : [])].map(String)) };
+  } else if (type === 'prompt.aborted') {
+    trigger = { type, promptId: String(data.prompt_id ?? data.promptId ?? '') };
+  } else if (type === 'prompt.completed') {
+    trigger = { type };
+  }
+  if (!trigger || cliScheduledRefreshTimers.has(sessionId)) return;
+  const timer = setTimeout(() => {
+    cliScheduledRefreshTimers.delete(sessionId);
+    void refreshCliScheduled(sessionId, trigger);
+  }, SCHEDULED_REFRESH_DEBOUNCE_MS);
+  cliScheduledRefreshTimers.set(sessionId, timer);
+}
+
+/**
+ * Diff the daemon's queued prompts against the last snapshot and push
+ * scheduled.updated. Failures are silent: the next trigger retries.
+ */
+async function refreshCliScheduled(sessionId, trigger) {
+  const client = cli.client;
+  if (!client || typeof client.listQueuedPrompts !== 'function') return;
+  let items;
+  try {
+    items = await client.listQueuedPrompts(sessionId);
+  } catch {
+    return;
+  }
+  const previous = cliScheduledCache.get(sessionId) || [];
+  const stillQueued = new Set(items.map((item) => item.prompt_id));
+  const departed = [];
+  for (const old of previous) {
+    if (stillQueued.has(old.prompt_id)) continue;
+    let reason = 'gone';
+    if (trigger?.type === 'turn.started') reason = 'started';
+    else if (trigger?.type === 'prompt.steered' && trigger.promptIds.has(old.prompt_id)) reason = 'steered';
+    else if (trigger?.type === 'prompt.aborted' && trigger.promptId === old.prompt_id) reason = 'aborted';
+    departed.push({ prompt_id: old.prompt_id, text: old.text, reason });
+  }
+  cliScheduledCache.set(sessionId, items);
+  emitSession(sessionId, {
+    type: 'scheduled.updated',
+    session_id: sessionId,
+    items,
+    ...(departed.length ? { departed } : {}),
+  });
+}
+
+/** Schedule `text` behind the active turn; idle sessions start it at once. */
+async function scheduleMessage(sessionId, text) {
+  const value = String(text ?? '').trim();
+  if (!value) throw new Error('예약 메시지 텍스트가 비어 있습니다.');
+  if (currentEngine === 'cli') {
+    await rejectIfDirectSession(sessionId);
+    const submitted = await requireCli().queuePrompt(sessionId, value);
+    // Keep the diff baseline current so the daemon echoing this prompt back
+    // out of the queue is classified as a departure, never as new data loss.
+    await refreshCliScheduled(sessionId, null);
+    return submitted;
+  }
+  if (!activeTurns.has(sessionId)) {
+    // The turn ended between the composer's busy check and the send.
+    return directSendPrompt(sessionId, value);
+  }
+  const item = getScheduledQueue(sessionId).enqueue({ id: `prompt_${randomUUID()}`, text: value });
+  emitScheduledUpdated(sessionId);
+  return { prompt_id: item.id, status: 'queued', created_at: item.createdAt };
+}
+
+/** Snapshot for session switches / initial load: [{prompt_id, text, created_at}]. */
+async function listScheduled(sessionId) {
+  if (currentEngine === 'cli') {
+    if (await resolveDirectStoreOnly(sessionId)) return []; // foreign read-only session
+    const items = await requireCli().listQueuedPrompts(sessionId);
+    cliScheduledCache.set(sessionId, items);
+    return items;
+  }
+  return scheduledQueues.get(sessionId)?.list() ?? [];
+}
+
+async function updateScheduled(sessionId, promptId, text) {
+  const value = String(text ?? '').trim();
+  if (!value) throw new Error('예약 메시지 텍스트가 비어 있습니다.');
+  if (currentEngine === 'cli') {
+    await rejectIfDirectSession(sessionId);
+    const result = await requireCli().updateQueuedPrompt(sessionId, promptId, value);
+    await refreshCliScheduled(sessionId, null);
+    return result;
+  }
+  const item = scheduledQueues.get(sessionId)?.update(promptId, value);
+  if (!item) throw new Error('예약된 메시지를 찾을 수 없습니다.');
+  emitScheduledUpdated(sessionId);
+  return { prompt_id: item.id, status: 'queued', created_at: item.createdAt };
+}
+
+async function cancelScheduled(sessionId, promptId) {
+  if (currentEngine === 'cli') {
+    await rejectIfDirectSession(sessionId);
+    const result = await requireCli().cancelQueuedPrompt(sessionId, promptId);
+    await refreshCliScheduled(sessionId, null);
+    return result;
+  }
+  const item = scheduledQueues.get(sessionId)?.remove(promptId);
+  if (!item) throw new Error('예약된 메시지를 찾을 수 없습니다.');
+  emitScheduledUpdated(sessionId, [{ prompt_id: item.id, text: item.text, reason: 'aborted' }]);
+  return { deleted: true, prompt_id: item.id };
+}
+
+/**
+ * "Run now": busy sessions merge the message into the active turn as a steer;
+ * idle ones start it as a normal prompt.
+ */
+async function runScheduled(sessionId, promptId) {
+  if (currentEngine === 'cli') {
+    await rejectIfDirectSession(sessionId);
+    const result = await requireCli().steerQueuedPrompts(sessionId, [promptId]);
+    await refreshCliScheduled(sessionId, null);
+    return { ...result, prompt_id: promptId, status: 'steering' };
+  }
+  const item = scheduledQueues.get(sessionId)?.remove(promptId);
+  if (!item) throw new Error('예약된 메시지를 찾을 수 없습니다.');
+  const turn = activeTurns.get(sessionId);
+  if (turn) {
+    // The turn's steer queue has no edit window — only explicit user actions
+    // land there, so the adjustment reaches the next safe model boundary.
+    turn.steerQueue.enqueue({ id: item.id, text: item.text });
+    emitScheduledUpdated(sessionId, [{ prompt_id: item.id, text: item.text, reason: 'steered' }]);
+    return { prompt_id: item.id, turn_id: turn.turnId, status: 'steering' };
+  }
+  emitScheduledUpdated(sessionId, [{ prompt_id: item.id, text: item.text, reason: 'started' }]);
+  const started = await directSendPrompt(sessionId, item.text);
+  return { ...started, scheduled_prompt_id: item.id };
+}
+
+// ---------------------------------------------------------------------------
 // Sessions — prompt / steer / abort / approvals / questions
 // ---------------------------------------------------------------------------
 
@@ -1248,85 +1451,6 @@ async function sendPrompt(sessionId, text) {
     return client.sendPrompt(sessionId, text);
   }
   return directSendPrompt(sessionId, text);
-}
-
-async function steer(sessionId, text) {
-  if (currentEngine === 'cli') {
-    await rejectIfDirectSession(sessionId);
-    return requireCli().steer(sessionId, text);
-  }
-  const turn = activeTurns.get(sessionId);
-  if (turn) {
-    const value = String(text ?? '').trim();
-    if (!value) throw new Error('스티어 텍스트가 비어 있습니다.');
-    const promptId = `prompt_${randomUUID()}`;
-    const item = turn.steerQueue.enqueue({ id: promptId, text: value });
-    return {
-      prompt_id: promptId,
-      turn_id: turn.turnId,
-      status: 'queued',
-      editable_until: item.editableUntil,
-    };
-  }
-  return directSendPrompt(sessionId, text);
-}
-
-async function holdSteer(sessionId, promptId) {
-  if (currentEngine === 'cli') {
-    await rejectIfDirectSession(sessionId);
-    return requireCli().holdSteer(sessionId, promptId);
-  }
-  const turn = activeTurns.get(sessionId);
-  const item = turn?.steerQueue.hold(promptId);
-  if (!turn || !item) throw new Error('대기 중인 작업 조정을 찾을 수 없습니다.');
-  return { prompt_id: promptId, status: 'held' };
-}
-
-async function resumeSteer(sessionId, promptId) {
-  if (currentEngine === 'cli') {
-    await rejectIfDirectSession(sessionId);
-    return requireCli().resumeSteer(sessionId, promptId);
-  }
-  const turn = activeTurns.get(sessionId);
-  const item = turn?.steerQueue.resume(promptId);
-  if (!turn || !item) throw new Error('대기 중인 작업 조정을 찾을 수 없습니다.');
-  return {
-    prompt_id: promptId,
-    status: 'queued',
-    editable_until: item.editableUntil,
-  };
-}
-
-async function updateSteer(sessionId, promptId, text) {
-  if (currentEngine === 'cli') {
-    await rejectIfDirectSession(sessionId);
-    return requireCli().updateSteer(sessionId, promptId, text);
-  }
-  const value = String(text ?? '').trim();
-  if (!value) throw new Error('스티어 텍스트가 비어 있습니다.');
-  const turn = activeTurns.get(sessionId);
-  const item = turn?.steerQueue.update(promptId, value);
-  if (!turn || !item) throw new Error('대기 중인 작업 조정을 찾을 수 없습니다.');
-  return {
-    prompt_id: item.id,
-    replaced_prompt_id: item.id,
-    turn_id: turn.turnId,
-    status: 'queued',
-    editable_until: item.editableUntil,
-  };
-}
-
-async function deleteSteer(sessionId, promptId) {
-  if (currentEngine === 'cli') {
-    await rejectIfDirectSession(sessionId);
-    return requireCli().deleteSteer(sessionId, promptId);
-  }
-  const turn = activeTurns.get(sessionId);
-  if (!turn) throw new Error('대기 중인 작업 조정을 찾을 수 없습니다.');
-  if (!turn.steerQueue.remove(promptId)) {
-    throw new Error('대기 중인 작업 조정을 찾을 수 없습니다.');
-  }
-  return { deleted: true, prompt_id: promptId };
 }
 
 /** Interrupt a direct-engine turn (no-op when idle); true when one was active. */
@@ -1508,6 +1632,13 @@ async function renameSession(sessionId, title) {
 }
 
 async function deleteSession(sessionId) {
+  scheduledQueues.delete(sessionId);
+  cliScheduledCache.delete(sessionId);
+  const refreshTimer = cliScheduledRefreshTimers.get(sessionId);
+  if (refreshTimer) {
+    clearTimeout(refreshTimer);
+    cliScheduledRefreshTimers.delete(sessionId);
+  }
   if (currentEngine === 'cli') {
     // V5: deleting a direct-store session is a local file op — allowed
     // (interrupt a locally-active turn first, same as the direct branch).
@@ -1587,11 +1718,11 @@ module.exports = {
   getMessages,
   getProfile,
   sendPrompt,
-  steer,
-  holdSteer,
-  resumeSteer,
-  updateSteer,
-  deleteSteer,
+  scheduleMessage,
+  listScheduled,
+  updateScheduled,
+  cancelScheduled,
+  runScheduled,
   abort,
   respondApproval,
   answerQuestion,

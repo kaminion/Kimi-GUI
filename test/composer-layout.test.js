@@ -31,3 +31,33 @@ test('file-change summary owns independent outer spacing', () => {
   assert.match(styles, /#composer-change-status\s*\{[^}]*margin:\s*0 auto var\(--space-1\)/s);
   assert.match(styles, /#composer-change-status\[hidden\]\s*\{\s*display:\s*none/s);
 });
+
+test('one composer button morphs between SEND, STOP, and SCHEDULE', () => {
+  const html = read('renderer/index.html');
+  const chat = read('renderer/js/chat.js');
+  const styles = read('renderer/styles/components.css');
+
+  // No separate abort button: #send-btn carries all three faces.
+  assert.equal(html.includes('id="composer-abort-btn"'), false);
+  assert.equal(html.includes('id="send-btn"'), true);
+  assert.match(styles, /#send-btn\.stop-mode\s*\{[^}]*background:\s*var\(--danger-soft\)/s);
+  assert.match(chat, /classList\.toggle\('stop-mode', stopping\)/);
+  // STOP fires only while the composer is empty mid-turn; typing restores SEND.
+  assert.match(chat, /busy && !readOnly && !composerEl\.value\.trim\(\)/);
+});
+
+test('busy sends park as scheduled messages, never implicit steers', () => {
+  const chat = read('renderer/js/chat.js');
+
+  assert.match(chat, /app\.scheduleMessage\(text\)/);
+  assert.match(chat, /appendScheduledCard\(text\)/);
+  assert.match(chat, /case 'scheduled\.updated':/);
+  assert.match(chat, /T\('chat\.scheduled_pending', '예약된 메시지'\)/);
+  // Card actions: edit / run-now / cancel.
+  assert.match(chat, /T\('chat\.scheduled_run', '바로 실행'\)/);
+  assert.match(chat, /T\('chat\.scheduled_cancel', '취소'\)/);
+  // Session-switch restore + per-session composer drafts.
+  assert.match(chat, /restoreScheduledCards\(activeSessionId\)/);
+  assert.match(chat, /swapComposerDraft\(sessionId\)/);
+  assert.equal(chat.includes('chat.steer_placeholder'), false);
+});

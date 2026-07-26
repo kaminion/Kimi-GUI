@@ -25,7 +25,6 @@
 .tool-chevron,
 .tool-status,
 #send-btn::before,
-#composer-abort-btn::before,
 #search-open-btn::before,
 #settings-btn::before,
 #panel-toggle-btn::before,
@@ -1175,39 +1174,22 @@
   pointer-events: none;
 }
 
-/* Busy turns keep steering and stopping as two distinct actions. */
+/* Busy turns morph the one button between SCHEDULE (accent ring) and STOP. */
 #send-btn.steer-mode {
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
-#composer-abort-btn {
-  flex: none;
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+/* STOP face: same danger square the old separate abort button drew. */
+#send-btn.stop-mode {
   background: var(--danger-soft);
-  border-radius: 50%;
-  transition: transform 0.16s var(--ease-out);
 }
 
-#composer-abort-btn::before {
-  content: "";
+#send-btn.stop-mode::before {
   width: 12px;
   height: 12px;
   background: var(--danger);
   -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'%3E%3Crect x='2' y='2' width='10' height='10' rx='2.5' fill='black'/%3E%3C/svg%3E");
   mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'%3E%3Crect x='2' y='2' width='10' height='10' rx='2.5' fill='black'/%3E%3C/svg%3E");
-}
-
-#composer-abort-btn:hover {
-  filter: brightness(1.08);
-}
-
-#composer-abort-btn:active {
-  filter: brightness(0.92);
-  transform: scale(0.93);
 }
 
 /* ==========================================================================

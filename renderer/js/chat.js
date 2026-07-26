@@ -26,8 +26,11 @@
  *
  * v5 (R-UX):
  * - While the active session is busy, the composer stays editable and Enter
- *   steers the active turn. #composer-abort-btn remains a separate stop action
- *   so adjusting work never hides or overloads cancellation.
+ *   parks the text as a scheduled message ("예약된 메시지") that runs when the
+ *   turn ends — the single #send-btn morphs into STOP only while the composer
+ *   is empty, and back to SEND as soon as text is typed. Scheduled cards offer
+ *   edit / run-now (immediate steer) / cancel, live in main's per-session
+ *   queue, and are restored after session switches via listScheduled.
  * - Foreign-engine sessions (engine mismatch — e.g. a direct session opened
  *   under the cli engine) are read-only: Chat.setReadOnly(true) disables the
  *   composer + send button and swaps the placeholder/title for the
@@ -107,7 +110,6 @@
   let transcriptEl = null;
   let composerEl = null;
   let sendBtn = null;
-  let abortBtn = null;
   let slashAutocomplete = null;
   let initialized = false;
 
@@ -117,7 +119,9 @@
   const liveStreams = new Map();        // turnId -> live process-block state for id-less deltas
   const processIntent = new Map();      // messageId -> 'open'|'closed' (user disclosure intent)
   let optimisticUser = null;            // { text, el } echoed locally until server confirms
-  let optimisticSteers = [];            // [{ text, el }] current-turn adjustments
+  let scheduledCards = [];              // scheduled-message cards ("예약된 메시지")
+  let consumedEchoes = [];              // [{ text, el }] scheduled messages now running
+  const composerDrafts = new Map();     // sessionKey -> unsent composer text
   let busy = false;
   let readOnly = false;                 // foreign-engine session: composer locked, notice shown
   let currentChangeSnapshot = { sessionId: null, fileCount: 0, additions: 0, deletions: 0, files: [] };
@@ -215,6 +219,9 @@
       content: content.map(normPart),
       status: m.status,
       created_at: m.created_at ?? m.createdAt,
+      // Queued daemon prompts persist their user message up front; the id
+      // links the hidden row to its scheduled card until the prompt starts.
+      prompt_id: m.prompt_id ?? m.promptId ?? null,
       // Machine-content filtering (v7): REST wire carries metadata.origin
       // ({kind:'injection'|'task'|...}); the local replay may attach origin.
       origin: m.origin ?? (m.metadata && m.metadata.origin) ?? null,
@@ -1106,6 +1113,7 @@
 
   function appendMessageNode(m) {
     if (isFullyClaimedToolMessage(m)) return null; // folded into existing tool rows
+    if (isScheduledHiddenMessage(m)) return null;  // its card stands in for the row
     const row = el('div', 'msg-row');
     row.dataset.messageId = m.id;
     fillMessage(row, m, collectResults(), busy);
@@ -1149,19 +1157,19 @@
     streamNodes.clear();
     liveStreams.clear(); // provisional live rows are replaced by history
     transcriptEl.innerHTML = '';
-    if (!messages.length) {
-      renderEmptyState();
-      publishChanges();
-      return;
-    }
     const results = collectResults();
     for (const m of messages) {
       if (isFullyClaimedToolMessage(m)) continue; // folded into existing tool rows
+      if (isScheduledHiddenMessage(m)) continue;  // its card stands in for the row
       const row = el('div', 'msg-row');
       row.dataset.messageId = m.id;
       fillMessage(row, m, results, false);
       transcriptEl.append(row);
     }
+    if (!transcriptEl.childNodes.length && !scheduledCards.length && !consumedEchoes.length) {
+      renderEmptyState();
+    }
+    reappendScheduledCards();
     publishChanges();
   }
 
@@ -1194,7 +1202,8 @@
     liveStreams.clear();
     processIntent.clear();
     optimisticUser = null;
-    optimisticSteers = [];
+    consumedEchoes = [];
+    scheduledCards = [];
     transcriptEl.classList.remove('is-load-pending');
     transcriptEl.innerHTML = '';
 
@@ -1250,6 +1259,8 @@
     clearHistoryLoading();
     activeSessionId = sessionId;
     messages = [];
+    consumedEchoes = [];
+    scheduledCards = [];
     transcriptEl.innerHTML = '';
     const wrap = el('div', 'transcript-load-error');
     wrap.setAttribute('role', 'alert');
@@ -1285,8 +1296,10 @@
         const list = await window.kimi.getMessages(activeSessionId);
         if (Array.isArray(list)) {
           optimisticUser = null;
-          optimisticSteers = [];
           messages = sortByTime(list.map(normMessage).filter((m) => !isMachineMessage(m)));
+          // Run-now cards settle here: history now carries their message.
+          scheduledCards = scheduledCards.filter((card) => SCHEDULED_HIDE_STATUSES.has(card.status));
+          reconcileConsumedEchoes();
           fullRedraw();
           maybeScroll();
         }
@@ -1490,14 +1503,25 @@
       return;
     }
     if (m.role === 'user') {
-      const steerIndex = optimisticSteers.findIndex((item) => item.text === textOfMessage(m));
-      if (steerIndex >= 0) {
+      // A scheduled message that already started: its echo becomes the row.
+      const echoIndex = consumedEchoes.findIndex((item) => item.text === textOfMessage(m));
+      if (echoIndex >= 0) {
         messages.push(m);
-        const pending = optimisticSteers[steerIndex];
-        pending.message = m;
-        pending.messageId = m.id;
-        pending.el.dataset.messageId = m.id;
-        if (pending.status === 'sent') finalizeOptimisticSteer(pending, m);
+        const echo = consumedEchoes.splice(echoIndex, 1)[0];
+        echo.el.dataset.messageId = m.id;
+        fillMessage(echo.el, m, collectResults(), busy);
+        maybeScroll();
+        return;
+      }
+      // A still-waiting scheduled message: the daemon persisted its user copy
+      // up front — attach it to the card instead of rendering a second row.
+      const card = matchScheduledCardForMessage(m);
+      if (card) {
+        messages.push(m);
+        card.message = m;
+        card.messageId = m.id;
+        card.el.dataset.messageId = m.id;
+        if (card.status === 'sent') finalizeScheduledCard(card, m);
         maybeScroll();
         return;
       }
@@ -1583,13 +1607,16 @@
       case 'tool.call.started': onToolStarted(data); break;
       case 'tool.result': onToolResult(data); break;
       case 'prompt.steer_sending':
-        setOptimisticSteersSending(promptIdsOf(data));
+        setScheduledCardsSending(promptIdsOf(data));
         break;
       case 'prompt.steered':
-        setOptimisticSteersSent(promptIdsOf(data));
+        setScheduledCardsSent(promptIdsOf(data));
         break;
       case 'prompt.steer_failed':
-        setOptimisticSteersFailed(promptIdsOf(data));
+        setScheduledCardsFailed(promptIdsOf(data));
+        break;
+      case 'scheduled.updated':
+        onScheduledUpdated(data);
         break;
       case 'session.status_changed':
         setBusyFromStatus(data.status);
@@ -1658,28 +1685,29 @@
       const notice = T('chat.foreign_readonly', '내장 엔진 세션은 열어보기만 가능합니다 · 엔진 전환 시 이어쓸 수 있습니다');
       composerEl.setAttribute('placeholder', notice);
     } else if (busy) {
-      composerEl.setAttribute('placeholder', T('chat.steer_placeholder', '현재 작업에 조정할 내용을 입력하세요…'));
+      composerEl.setAttribute('placeholder', T('chat.scheduled_placeholder', '턴이 끝나면 실행할 메시지를 입력하세요…'));
     } else {
       composerEl.setAttribute('placeholder', T('chat.composer_placeholder', '메시지를 입력하세요…'));
     }
     updateSendBtn();
   }
 
+  // One button, three faces: STOP while a turn runs with an empty composer,
+  // SCHEDULE while it runs with text typed, SEND when the session is idle.
   function updateSendBtn() {
     if (!sendBtn) return;
-    const steering = busy && !readOnly;
-    sendBtn.classList.remove('stop-mode');
-    sendBtn.classList.toggle('steer-mode', steering);
-    sendBtn.disabled = readOnly || !composerEl.value.trim();
-    if (abortBtn) {
-      abortBtn.hidden = !steering;
-      abortBtn.disabled = !steering;
-      abortBtn.setAttribute('aria-label', T('chat.abort_title', '중단'));
-      abortBtn.title = T('chat.abort_title', '중단');
-    }
-    if (steering) {
-      sendBtn.setAttribute('aria-label', T('chat.steer_aria', '현재 작업 조정'));
-      sendBtn.title = T('chat.steer_title', '현재 작업 조정 (↵)');
+    const hasText = !!composerEl.value.trim();
+    const stopping = busy && !readOnly && !hasText;
+    const scheduling = busy && !readOnly && hasText;
+    sendBtn.classList.toggle('stop-mode', stopping);
+    sendBtn.classList.toggle('steer-mode', scheduling);
+    sendBtn.disabled = readOnly || (!stopping && !hasText);
+    if (stopping) {
+      sendBtn.setAttribute('aria-label', T('chat.abort_title', '중단'));
+      sendBtn.title = T('chat.abort_title', '중단');
+    } else if (scheduling) {
+      sendBtn.setAttribute('aria-label', T('chat.scheduled_aria', '메시지 예약'));
+      sendBtn.title = T('chat.scheduled_title', '메시지 예약 (↵)');
     } else {
       sendBtn.setAttribute('aria-label', T('chat.send_aria', '전송'));
       // Read-only (foreign-engine) sessions explain why the button is inert.
@@ -1704,29 +1732,77 @@
     scrollToBottom();
   }
 
-  function appendOptimisticSteer(text) {
+  // ---- scheduled message cards ("예약된 메시지") -----------------------------
+  // One card per message parked behind the active turn. The card list mirrors
+  // main's per-session queue: busy sends add cards optimistically, the
+  // scheduled.updated event reconciles them against the authoritative items,
+  // and its departed entries (started/steered/aborted/gone) settle each card.
+  // Statuses: 'submitting' (IPC in flight) | 'queued' | 'editing' |
+  // 'updating' | 'cancelling' | 'sending' | 'sent' (run-now steer) | 'error'.
+
+  const SCHEDULED_HIDE_STATUSES = new Set([
+    'submitting', 'queued', 'editing', 'updating', 'cancelling', 'error',
+  ]);
+
+  function scheduledCardByPromptId(promptId) {
+    return scheduledCards.find((card) => card.promptId === promptId) ?? null;
+  }
+
+  // A queued daemon prompt persists its user message up front (prompt_id on
+  // the wire); while its card waits, the card stands in for that row. Text is
+  // the fallback link when either side lacks the id.
+  function isScheduledHiddenMessage(m) {
+    if (m.role !== 'user') return false;
+    const text = textOfMessage(m);
+    return scheduledCards.some((card) =>
+      SCHEDULED_HIDE_STATUSES.has(card.status) &&
+      ((card.promptId && m.prompt_id && card.promptId === m.prompt_id) ||
+        ((!card.promptId || !m.prompt_id) && card.text === text)));
+  }
+
+  function matchScheduledCardForMessage(m) {
+    const text = textOfMessage(m);
+    return (
+      scheduledCards.find((card) => card.promptId && m.prompt_id && card.promptId === m.prompt_id) ??
+      scheduledCards.find((card) =>
+        SCHEDULED_HIDE_STATUSES.has(card.status) &&
+        (!card.promptId || !m.prompt_id) &&
+        card.text === text) ??
+      null
+    );
+  }
+
+  function setScheduledCardState(card, status, labelText) {
+    if (!card || !scheduledCards.includes(card)) return;
+    card.status = status;
+    card.label.textContent = labelText;
+    card.label.classList.toggle('error', status === 'error');
+    const actionable = status === 'queued' || status === 'error';
+    card.actions.hidden = !actionable;
+    card.editButton.disabled = !actionable;
+    card.runButton.disabled = !actionable;
+    card.deleteButton.disabled = !actionable;
+  }
+
+  function appendScheduledCard(text) {
     clearEmptyState();
     const row = el('div', 'msg-row msg-user msg-steer msg-optimistic');
     const header = el('div', 'msg-steer-header');
-    const label = el(
-      'span',
-      'msg-steer-label',
-      T('chat.steer_pending', '대기 중인 작업 조정')
-    );
+    const label = el('span', 'msg-steer-label', T('chat.scheduled_pending', '예약된 메시지'));
     const actions = el('div', 'msg-steer-actions');
     const editButton = el('button', 'msg-steer-action', T('chat.steer_edit', '편집'));
     editButton.type = 'button';
     editButton.disabled = true;
-    editButton.setAttribute('aria-label', T('chat.steer_edit_aria', '대기 중인 작업 조정 편집'));
-    const deleteButton = el(
-      'button',
-      'msg-steer-action danger',
-      T('chat.steer_delete', '삭제')
-    );
+    editButton.setAttribute('aria-label', T('chat.scheduled_edit_aria', '예약된 메시지 편집'));
+    const runButton = el('button', 'msg-steer-action', T('chat.scheduled_run', '바로 실행'));
+    runButton.type = 'button';
+    runButton.disabled = true;
+    runButton.setAttribute('aria-label', T('chat.scheduled_run_aria', '예약된 메시지 바로 실행'));
+    const deleteButton = el('button', 'msg-steer-action danger', T('chat.scheduled_cancel', '취소'));
     deleteButton.type = 'button';
     deleteButton.disabled = true;
-    deleteButton.setAttribute('aria-label', T('chat.steer_delete_aria', '대기 중인 작업 조정 삭제'));
-    actions.append(editButton, deleteButton);
+    deleteButton.setAttribute('aria-label', T('chat.scheduled_cancel_aria', '예약된 메시지 취소'));
+    actions.append(editButton, runButton, deleteButton);
     header.append(label, actions);
 
     const textNode = el('div', 'msg-user-text', text);
@@ -1735,33 +1811,24 @@
     const textarea = document.createElement('textarea');
     textarea.className = 'msg-steer-editor-input';
     textarea.rows = 2;
-    textarea.setAttribute(
-      'aria-label',
-      T('chat.steer_edit_aria', '대기 중인 작업 조정 편집')
-    );
-    textarea.setAttribute(
-      'placeholder',
-      T('chat.steer_edit_placeholder', '조정할 내용을 입력하세요…')
-    );
+    textarea.setAttribute('aria-label', T('chat.scheduled_edit_aria', '예약된 메시지 편집'));
+    textarea.setAttribute('placeholder', T('chat.composer_placeholder', '메시지를 입력하세요…'));
     const editorActions = el('div', 'msg-steer-editor-actions');
     const cancelButton = el('button', 'msg-steer-editor-button', T('common.cancel', '취소'));
     cancelButton.type = 'button';
-    const saveButton = el(
-      'button',
-      'msg-steer-editor-button primary',
-      T('chat.steer_save', '저장')
-    );
+    const saveButton = el('button', 'msg-steer-editor-button primary', T('chat.steer_save', '저장'));
     saveButton.type = 'button';
     editorActions.append(cancelButton, saveButton);
     editor.append(textarea, editorActions);
     row.append(header, textNode, editor);
     transcriptEl.append(row);
-    const pending = {
+    const card = {
       text,
       el: row,
       label,
       actions,
       editButton,
+      runButton,
       deleteButton,
       textNode,
       editor,
@@ -1774,22 +1841,284 @@
       message: null,
       status: 'submitting',
     };
-    optimisticSteers.push(pending);
-    editButton.addEventListener('click', () => { void openOptimisticSteerEditor(pending); });
-    deleteButton.addEventListener('click', () => { void deleteOptimisticSteer(pending); });
-    cancelButton.addEventListener('click', () => { void cancelOptimisticSteerEditor(pending); });
-    saveButton.addEventListener('click', () => { void saveOptimisticSteer(pending); });
+    scheduledCards.push(card);
+    editButton.addEventListener('click', () => { openScheduledCardEditor(card); });
+    runButton.addEventListener('click', () => { void runScheduledCardNow(card); });
+    deleteButton.addEventListener('click', () => { void cancelScheduledCard(card); });
+    cancelButton.addEventListener('click', () => { closeScheduledCardEditor(card); });
+    saveButton.addEventListener('click', () => { void saveScheduledCardEdit(card); });
     textarea.addEventListener('keydown', (event) => {
       if (event.key === 'Escape') {
         event.preventDefault();
-        void cancelOptimisticSteerEditor(pending);
+        closeScheduledCardEditor(card);
       } else if (event.key === 'Enter' && (event.metaKey || event.ctrlKey) && !event.isComposing) {
         event.preventDefault();
-        void saveOptimisticSteer(pending);
+        void saveScheduledCardEdit(card);
       }
     });
     scrollToBottom();
-    return pending;
+    return card;
+  }
+
+  // Queue item -> card. An optimistic card from our own in-flight send is
+  // claimed first so the same message never gets two cards.
+  function adoptScheduledItem(item) {
+    const promptId = item?.prompt_id ?? item?.promptId ?? null;
+    const text = typeof item?.text === 'string' ? item.text : '';
+    const optimistic = scheduledCards.find((card) =>
+      card.status === 'submitting' && !card.promptId && card.text === text);
+    const card = optimistic ?? appendScheduledCard(text);
+    card.promptId = promptId;
+    setScheduledCardState(card, 'queued', T('chat.scheduled_pending', '예약된 메시지'));
+    const hidden = promptId
+      ? messages.find((m) => m.role === 'user' && m.prompt_id === promptId)
+      : null;
+    if (hidden) {
+      // The row may already be rendered (restored after a session switch):
+      // the card stands in for it from here on.
+      const rendered = hidden.id && transcriptEl
+        ? transcriptEl.querySelector('[data-message-id="' + (window.CSS ? CSS.escape(hidden.id) : hidden.id) + '"]')
+        : null;
+      if (rendered && rendered !== card.el) rendered.remove();
+      card.message = hidden;
+      card.messageId = hidden.id;
+      card.el.dataset.messageId = hidden.id;
+    }
+    return card;
+  }
+
+  function finishScheduledSubmission(card, result) {
+    if (!scheduledCards.includes(card)) return;
+    if (!result || typeof result !== 'object') {
+      rejectScheduledCard(card);
+      return;
+    }
+    card.promptId = result.prompt_id ?? result.promptId ?? card.promptId;
+    if (result.status === 'queued' && card.promptId) {
+      setScheduledCardState(card, 'queued', T('chat.scheduled_pending', '예약된 메시지'));
+      return;
+    }
+    // The turn ended before the message could queue: it is running already.
+    consumeScheduledCard(card);
+  }
+
+  function rejectScheduledCard(card) {
+    removeScheduledCard(card);
+    appendSystemNote(T('chat.scheduled_failed', '예약 메시지를 전송하지 못했습니다. 다시 시도해 주세요.'));
+  }
+
+  function openScheduledCardEditor(card) {
+    if (!card?.promptId || !['queued', 'error'].includes(card.status)) return;
+    card.status = 'editing';
+    card.label.classList.remove('error');
+    card.label.textContent = T('chat.scheduled_editing', '예약된 메시지 편집 중');
+    card.actions.hidden = true;
+    card.textNode.hidden = true;
+    card.editor.hidden = false;
+    card.textarea.value = card.text;
+    card.saveButton.disabled = false;
+    card.cancelButton.disabled = false;
+    requestAnimationFrame(() => {
+      card.textarea.focus();
+      card.textarea.setSelectionRange(card.textarea.value.length, card.textarea.value.length);
+    });
+  }
+
+  function closeScheduledCardEditor(card) {
+    if (card?.status !== 'editing') return;
+    card.editor.hidden = true;
+    card.textNode.hidden = false;
+    setScheduledCardState(card, 'queued', T('chat.scheduled_pending', '예약된 메시지'));
+  }
+
+  async function saveScheduledCardEdit(card) {
+    if (card?.status !== 'editing') return;
+    const value = card.textarea.value.trim();
+    if (!value) {
+      card.label.textContent = T('chat.steer_empty', '내용을 입력해 주세요.');
+      card.label.classList.add('error');
+      card.textarea.focus();
+      return;
+    }
+    const app = window.App;
+    if (typeof app?.updateScheduled !== 'function') return;
+    card.status = 'updating';
+    card.label.classList.remove('error');
+    card.label.textContent = T('chat.scheduled_updating', '예약 메시지 저장 중…');
+    card.saveButton.disabled = true;
+    card.cancelButton.disabled = true;
+    const result = await app.updateScheduled(card.promptId, value);
+    if (!result || !scheduledCards.includes(card)) {
+      if (scheduledCards.includes(card)) {
+        card.status = 'editing';
+        card.label.classList.add('error');
+        card.label.textContent = T('chat.steer_edit_failed', '대기 메시지를 편집할 수 없습니다.');
+        card.saveButton.disabled = false;
+        card.cancelButton.disabled = false;
+      }
+      return;
+    }
+    detachScheduledCardMessage(card);
+    card.text = value;
+    card.textNode.textContent = value;
+    card.promptId = result.prompt_id ?? result.promptId ?? card.promptId;
+    card.editor.hidden = true;
+    card.textNode.hidden = false;
+    setScheduledCardState(card, 'queued', T('chat.scheduled_pending', '예약된 메시지'));
+  }
+
+  async function runScheduledCardNow(card) {
+    if (!card?.promptId || !['queued', 'error'].includes(card.status)) return;
+    const app = window.App;
+    if (typeof app?.runScheduled !== 'function') return;
+    setScheduledCardState(card, 'sending', T('chat.steer_sending', '작업 조정 전달 중…'));
+    const result = await app.runScheduled(card.promptId);
+    // A scheduled.updated event may already have settled this card.
+    if (!scheduledCards.includes(card) || card.status === 'sent') return;
+    if (!result) {
+      card.editor.hidden = true;
+      card.textNode.hidden = false;
+      setScheduledCardState(card, 'error', T('chat.scheduled_run_failed', '예약된 메시지를 실행하지 못했습니다.'));
+      return;
+    }
+    if (result.status === 'steering' || result.steered) {
+      markScheduledCardSent(card);
+      return;
+    }
+    // The turn had already ended: the message starts as a fresh prompt.
+    consumeScheduledCard(card);
+  }
+
+  async function cancelScheduledCard(card) {
+    if (!card?.promptId || !['queued', 'error'].includes(card.status)) return;
+    const app = window.App;
+    if (typeof app?.cancelScheduled !== 'function') return;
+    setScheduledCardState(card, 'cancelling', T('chat.scheduled_cancelling', '예약된 메시지 취소 중…'));
+    const result = await app.cancelScheduled(card.promptId);
+    if (!scheduledCards.includes(card)) return; // a scheduled.updated settled it
+    if (result) {
+      removeScheduledCard(card);
+      return;
+    }
+    setScheduledCardState(card, 'error', T('chat.scheduled_cancel_failed', '예약된 메시지를 취소하지 못했습니다.'));
+  }
+
+  function detachScheduledCardMessage(card) {
+    if (card.messageId) {
+      messages = messages.filter((message) => message.id !== card.messageId);
+    }
+    card.messageId = null;
+    card.message = null;
+    card.el.removeAttribute('data-message-id');
+  }
+
+  function removeScheduledCard(card) {
+    const index = scheduledCards.indexOf(card);
+    if (index >= 0) scheduledCards.splice(index, 1);
+    if (card) detachScheduledCardMessage(card);
+    card?.el?.remove();
+  }
+
+  function finalizeScheduledCard(card, message) {
+    const index = scheduledCards.indexOf(card);
+    if (index >= 0) scheduledCards.splice(index, 1);
+    card.el.classList.remove('msg-optimistic', 'msg-steer');
+    card.el.dataset.messageId = message.id;
+    fillMessage(card.el, message, collectResults(), busy);
+  }
+
+  function markScheduledCardSent(card) {
+    if (!card || !scheduledCards.includes(card)) return;
+    setScheduledCardState(card, 'sent', T('chat.steer_sent', '작업 조정 전달됨'));
+    card.editor.hidden = true;
+    card.textNode.hidden = false;
+    if (card.message) finalizeScheduledCard(card, card.message);
+  }
+
+  // The parked message started running: the card becomes its user echo until
+  // the daemon-side copy (when one exists) or the end-of-turn resync lands.
+  function consumeScheduledCard(card) {
+    if (!card || !scheduledCards.includes(card)) return;
+    if (card.message) {
+      finalizeScheduledCard(card, card.message);
+      return;
+    }
+    const index = scheduledCards.indexOf(card);
+    if (index >= 0) scheduledCards.splice(index, 1);
+    card.el.classList.remove('msg-steer');
+    card.el.innerHTML = '';
+    card.el.append(el('div', 'msg-user-text', card.text));
+    consumedEchoes.push({ text: card.text, el: card.el });
+    maybeScroll();
+  }
+
+  // Echoes whose real message has since landed in history must not duplicate.
+  function reconcileConsumedEchoes() {
+    consumedEchoes = consumedEchoes.filter((echo) =>
+      !messages.some((m) => m.role === 'user' && textOfMessage(m) === echo.text));
+  }
+
+  // Cards and running echoes ride at the transcript's bottom; re-append them
+  // after any rebuild (their nodes keep listeners across innerHTML wipes).
+  function reappendScheduledCards() {
+    if (!transcriptEl) return;
+    for (const echo of consumedEchoes) transcriptEl.append(echo.el);
+    for (const card of scheduledCards) transcriptEl.append(card.el);
+  }
+
+  // Authoritative mirror of main's per-session queue: departed entries settle
+  // the cards the queue dropped; items add or update the waiting cards.
+  function onScheduledUpdated(data) {
+    if (!initialized || !data || typeof data !== 'object') return;
+    const departed = Array.isArray(data.departed) ? data.departed : [];
+    for (const gone of departed) {
+      const card = scheduledCardByPromptId(gone?.prompt_id ?? gone?.promptId);
+      if (!card) continue;
+      if (gone.reason === 'started') consumeScheduledCard(card);
+      else if (gone.reason === 'steered') markScheduledCardSent(card);
+      else removeScheduledCard(card); // aborted | gone
+    }
+    const items = Array.isArray(data.items) ? data.items : [];
+    const seen = new Set();
+    for (const item of items) {
+      const promptId = item?.prompt_id ?? item?.promptId;
+      if (!promptId) continue;
+      seen.add(promptId);
+      const existing = scheduledCardByPromptId(promptId);
+      if (existing) {
+        if (
+          ['queued', 'error'].includes(existing.status) &&
+          typeof item.text === 'string' &&
+          item.text !== existing.text
+        ) {
+          detachScheduledCardMessage(existing);
+          existing.text = item.text;
+          existing.textNode.textContent = item.text;
+        }
+        continue;
+      }
+      adoptScheduledItem(item);
+    }
+    // Waiting cards missing from the authoritative list were dropped elsewhere.
+    for (const card of [...scheduledCards]) {
+      if (card.promptId && ['queued', 'error'].includes(card.status) && !seen.has(card.promptId)) {
+        removeScheduledCard(card);
+      }
+    }
+  }
+
+  // Session-switch restore: repopulate cards from main's per-session queue.
+  // Additive only — live scheduled.updated events own removals from here on.
+  async function restoreScheduledCards(sessionId) {
+    const app = window.App;
+    if (typeof app?.listScheduled !== 'function') return;
+    const items = await app.listScheduled(sessionId);
+    if (sessionId !== activeSessionId) return;
+    for (const item of items) {
+      const promptId = item?.prompt_id ?? item?.promptId;
+      if (promptId && !scheduledCardByPromptId(promptId)) adoptScheduledItem(item);
+    }
+    maybeScroll();
   }
 
   function promptIdsOf(data) {
@@ -1803,258 +2132,34 @@
     return [...new Set(ids)];
   }
 
-  function pendingSteerByPromptId(promptId) {
-    return optimisticSteers.find((item) => item.promptId === promptId) ?? null;
-  }
-
-  function setOptimisticSteerState(pending, status, labelText) {
-    if (!pending || !optimisticSteers.includes(pending)) return;
-    pending.status = status;
-    pending.label.textContent = labelText;
-    pending.label.classList.toggle('error', status === 'error');
-    const editable = status === 'queued' || status === 'error';
-    pending.actions.hidden = !editable;
-    pending.editButton.disabled = !editable;
-    pending.deleteButton.disabled = !editable;
-  }
-
-  function finishOptimisticSteerSubmission(pending, result) {
-    if (!pending || !optimisticSteers.includes(pending)) return;
-    if (!result || typeof result !== 'object') {
-      rejectOptimisticSteer(pending);
-      return;
-    }
-    pending.promptId = result.prompt_id ?? result.promptId ?? null;
-    if (result.status === 'queued' && pending.promptId) {
-      setOptimisticSteerState(
-        pending,
-        'queued',
-        T('chat.steer_pending', '대기 중인 작업 조정')
-      );
-    } else {
-      markOptimisticSteerSent(pending);
-    }
-  }
-
-  function finalizeOptimisticSteer(pending, message) {
-    const index = optimisticSteers.indexOf(pending);
-    if (index >= 0) optimisticSteers.splice(index, 1);
-    pending.el.classList.remove('msg-optimistic', 'msg-steer');
-    pending.el.dataset.messageId = message.id;
-    fillMessage(pending.el, message, collectResults(), busy);
-  }
-
-  function markOptimisticSteerSent(pending) {
-    if (!pending || !optimisticSteers.includes(pending)) return;
-    setOptimisticSteerState(
-      pending,
-      'sent',
-      T('chat.steer_sent', '작업 조정 전달됨')
-    );
-    pending.editor.hidden = true;
-    pending.textNode.hidden = false;
-    if (pending.message) finalizeOptimisticSteer(pending, pending.message);
-  }
-
-  function setOptimisticSteersSending(promptIds) {
+  function setScheduledCardsSending(promptIds) {
     for (const promptId of promptIds) {
-      const pending = pendingSteerByPromptId(promptId);
-      if (!pending) continue;
-      setOptimisticSteerState(
-        pending,
-        'sending',
-        T('chat.steer_sending', '작업 조정 전달 중…')
-      );
-      pending.saveButton.disabled = true;
-      pending.cancelButton.disabled = true;
+      const card = scheduledCardByPromptId(promptId);
+      if (!card) continue;
+      setScheduledCardState(card, 'sending', T('chat.steer_sending', '작업 조정 전달 중…'));
+      card.saveButton.disabled = true;
+      card.cancelButton.disabled = true;
     }
   }
 
-  function setOptimisticSteersSent(promptIds) {
-    for (const promptId of promptIds) markOptimisticSteerSent(pendingSteerByPromptId(promptId));
+  function setScheduledCardsSent(promptIds) {
+    for (const promptId of promptIds) markScheduledCardSent(scheduledCardByPromptId(promptId));
   }
 
-  function setOptimisticSteersFailed(promptIds) {
+  function setScheduledCardsFailed(promptIds) {
     for (const promptId of promptIds) {
-      const pending = pendingSteerByPromptId(promptId);
-      if (!pending) continue;
-      pending.saveButton.disabled = false;
-      pending.cancelButton.disabled = false;
-      pending.editor.hidden = true;
-      pending.textNode.hidden = false;
-      setOptimisticSteerState(
-        pending,
+      const card = scheduledCardByPromptId(promptId);
+      if (!card) continue;
+      card.saveButton.disabled = false;
+      card.cancelButton.disabled = false;
+      card.editor.hidden = true;
+      card.textNode.hidden = false;
+      setScheduledCardState(
+        card,
         'error',
         T('chat.steer_still_queued', '전달하지 못했습니다. 아직 대기 중입니다.')
       );
     }
-  }
-
-  async function openOptimisticSteerEditor(pending) {
-    if (!pending?.promptId || !['queued', 'error'].includes(pending.status)) return;
-    const app = window.App;
-    if (typeof app?.holdSteer !== 'function') return;
-    setOptimisticSteerState(
-      pending,
-      'holding',
-      T('chat.steer_edit_opening', '편집 준비 중…')
-    );
-    const held = await app.holdSteer(pending.promptId);
-    if (!held || !optimisticSteers.includes(pending) || pending.status === 'sent') {
-      if (optimisticSteers.includes(pending)) {
-        setOptimisticSteerState(
-          pending,
-          'error',
-          T('chat.steer_edit_failed', '대기 메시지를 편집할 수 없습니다.')
-        );
-      }
-      return;
-    }
-    pending.status = 'editing';
-    pending.label.classList.remove('error');
-    pending.label.textContent = T('chat.steer_editing', '작업 조정 편집 중');
-    pending.actions.hidden = true;
-    pending.textNode.hidden = true;
-    pending.editor.hidden = false;
-    pending.textarea.value = pending.text;
-    pending.saveButton.disabled = false;
-    pending.cancelButton.disabled = false;
-    requestAnimationFrame(() => {
-      pending.textarea.focus();
-      pending.textarea.setSelectionRange(pending.textarea.value.length, pending.textarea.value.length);
-    });
-  }
-
-  function detachPendingSteerMessage(pending) {
-    if (pending.messageId) {
-      messages = messages.filter((message) => message.id !== pending.messageId);
-    }
-    pending.messageId = null;
-    pending.message = null;
-    pending.el.removeAttribute('data-message-id');
-  }
-
-  async function saveOptimisticSteer(pending) {
-    if (pending?.status !== 'editing') return;
-    const value = pending.textarea.value.trim();
-    if (!value) {
-      pending.label.textContent = T('chat.steer_empty', '내용을 입력해 주세요.');
-      pending.label.classList.add('error');
-      pending.textarea.focus();
-      return;
-    }
-    const app = window.App;
-    if (typeof app?.updateSteer !== 'function') return;
-    pending.status = 'updating';
-    pending.label.classList.remove('error');
-    pending.label.textContent = T('chat.steer_updating', '작업 조정 저장 중…');
-    pending.saveButton.disabled = true;
-    pending.cancelButton.disabled = true;
-    const result = await app.updateSteer(pending.promptId, value);
-    if (!result || !optimisticSteers.includes(pending)) {
-      if (optimisticSteers.includes(pending)) {
-        pending.status = 'editing';
-        pending.label.classList.add('error');
-        pending.label.textContent = T('chat.steer_edit_failed', '대기 메시지를 편집할 수 없습니다.');
-        pending.saveButton.disabled = false;
-        pending.cancelButton.disabled = false;
-      }
-      return;
-    }
-    detachPendingSteerMessage(pending);
-    pending.text = value;
-    pending.textNode.textContent = value;
-    pending.promptId = result.prompt_id ?? result.promptId ?? pending.promptId;
-    pending.editor.hidden = true;
-    pending.textNode.hidden = false;
-    if (result.status === 'queued') {
-      setOptimisticSteerState(
-        pending,
-        'queued',
-        T('chat.steer_pending', '대기 중인 작업 조정')
-      );
-    } else {
-      markOptimisticSteerSent(pending);
-    }
-  }
-
-  async function cancelOptimisticSteerEditor(pending) {
-    if (pending?.status !== 'editing') return;
-    const app = window.App;
-    if (typeof app?.resumeSteer !== 'function') return;
-    pending.status = 'resuming';
-    pending.label.textContent = T('chat.steer_resuming', '대기열로 돌아가는 중…');
-    pending.saveButton.disabled = true;
-    pending.cancelButton.disabled = true;
-    const resumed = await app.resumeSteer(pending.promptId);
-    if (!resumed || !optimisticSteers.includes(pending)) {
-      if (optimisticSteers.includes(pending)) {
-        pending.status = 'editing';
-        pending.label.classList.add('error');
-        pending.label.textContent = T('chat.steer_resume_failed', '편집을 닫을 수 없습니다.');
-        pending.saveButton.disabled = false;
-        pending.cancelButton.disabled = false;
-      }
-      return;
-    }
-    pending.editor.hidden = true;
-    pending.textNode.hidden = false;
-    setOptimisticSteerState(
-      pending,
-      'queued',
-      T('chat.steer_pending', '대기 중인 작업 조정')
-    );
-  }
-
-  function removeOptimisticSteer(pending) {
-    const index = optimisticSteers.indexOf(pending);
-    if (index >= 0) optimisticSteers.splice(index, 1);
-    if (pending?.messageId) messages = messages.filter((message) => message.id !== pending.messageId);
-    pending?.el?.remove();
-  }
-
-  function releaseHeldOptimisticSteers() {
-    if (typeof window.kimi?.resumeSteer !== 'function') return;
-    for (const pending of optimisticSteers) {
-      if (
-        pending.status !== 'editing' ||
-        !pending.promptId ||
-        !pending.sessionId
-      ) {
-        continue;
-      }
-      window.kimi
-        .resumeSteer(pending.sessionId, pending.promptId)
-        .catch(() => { /* engine shutdown or prompt already consumed */ });
-    }
-  }
-
-  async function deleteOptimisticSteer(pending) {
-    if (!pending?.promptId || !['queued', 'error'].includes(pending.status)) return;
-    const app = window.App;
-    if (typeof app?.deleteSteer !== 'function') return;
-    setOptimisticSteerState(
-      pending,
-      'deleting',
-      T('chat.steer_deleting', '작업 조정 삭제 중…')
-    );
-    const result = await app.deleteSteer(pending.promptId);
-    if (result && optimisticSteers.includes(pending)) {
-      removeOptimisticSteer(pending);
-      return;
-    }
-    if (optimisticSteers.includes(pending)) {
-      setOptimisticSteerState(
-        pending,
-        'error',
-        T('chat.steer_delete_failed', '대기 메시지를 삭제하지 못했습니다.')
-      );
-    }
-  }
-
-  function rejectOptimisticSteer(pending) {
-    removeOptimisticSteer(pending);
-    appendSystemNote(T('chat.steer_failed', '작업 조정 요청을 전송하지 못했습니다. 다시 시도해 주세요.'));
   }
 
   function appendSystemNote(text) {
@@ -2072,23 +2177,27 @@
     const app = window.App;
     if (!app) return;
     if (busy) {
-      if (typeof app.steer !== 'function') return;
+      // Mid-turn sends park as scheduled messages ("예약된 메시지") that run
+      // when the turn ends — never an implicit steer into the active turn.
+      if (typeof app.scheduleMessage !== 'function') return;
       composerEl.value = '';
+      composerDrafts.delete(composerDraftKey(activeSessionId));
       autoGrow();
       updateSendBtn();
-      const pending = appendOptimisticSteer(text);
+      const card = appendScheduledCard(text);
       Promise.resolve()
-        .then(() => app.steer(text))
-        .then((result) => finishOptimisticSteerSubmission(pending, result))
-        .catch(() => rejectOptimisticSteer(pending));
+        .then(() => app.scheduleMessage(text))
+        .then((result) => finishScheduledSubmission(card, result))
+        .catch(() => rejectScheduledCard(card));
       return;
     }
     if (typeof app.sendPrompt !== 'function') return;
     composerEl.value = '';
+    composerDrafts.delete(composerDraftKey(activeSessionId));
     autoGrow();
     updateSendBtn();
     appendOptimisticUser(text);
-    setBusy(true); // enables steer mode until the server reports idle again
+    setBusy(true); // switches the send button to STOP until the server is idle
     Promise.resolve()
       .then(() => app.sendPrompt(text))
       .then((result) => {
@@ -2122,9 +2231,14 @@
       updateSendBtn();
       slashAutocomplete?.handleInput?.();
     });
-    sendBtn.addEventListener('click', doSend);
-    abortBtn?.addEventListener('click', () => {
-      if (busy && !readOnly && typeof window.App?.abort === 'function') window.App.abort();
+    // Unified action: STOP while a turn runs with an empty composer,
+    // SEND/SCHEDULE otherwise (see updateSendBtn for the same rule).
+    sendBtn.addEventListener('click', () => {
+      if (busy && !readOnly && !composerEl.value.trim()) {
+        if (typeof window.App?.abort === 'function') window.App.abort();
+        return;
+      }
+      doSend();
     });
   }
 
@@ -2134,7 +2248,6 @@
     transcriptEl = document.getElementById('transcript');
     composerEl = document.getElementById('composer');
     sendBtn = document.getElementById('send-btn');
-    abortBtn = document.getElementById('composer-abort-btn');
     if (!transcriptEl || !composerEl || !sendBtn) return; // DOM not ready
     initialized = true;
     slashAutocomplete = window.SlashAutocomplete?.create?.({
@@ -2183,12 +2296,15 @@
     if (!initialized) init();
     if (!initialized) return;
     clearHistoryLoading();
-    releaseHeldOptimisticSteers();
-    if (sessionId !== undefined) activeSessionId = sessionId;
+    if (sessionId !== undefined) {
+      swapComposerDraft(sessionId);
+      activeSessionId = sessionId;
+    }
     slashAutocomplete?.refresh?.();
     if (reloadTimer) { clearTimeout(reloadTimer); reloadTimer = null; }
     optimisticUser = null;
-    optimisticSteers = [];
+    consumedEchoes = [];
+    scheduledCards = [];
     liveStreams.clear();
     processIntent.clear();
     messages = sortByTime((Array.isArray(list) ? list : []).map(normMessage).filter((m) => !isMachineMessage(m)));
@@ -2196,6 +2312,7 @@
     pinned = true;
     scrollToBottom();
     updateSendBtn();
+    if (activeSessionId) void restoreScheduledCards(activeSessionId);
   }
 
   // GET messages returns newest-first; render oldest-first (stable sort,
@@ -2219,13 +2336,14 @@
   }
 
   function reset() {
-    releaseHeldOptimisticSteers();
     messages = [];
     streamNodes.clear();
     liveStreams.clear();
     processIntent.clear();
     optimisticUser = null;
-    optimisticSteers = [];
+    consumedEchoes = [];
+    scheduledCards = [];
+    composerDrafts.clear();
     readOnly = false;
     if (reloadTimer) { clearTimeout(reloadTimer); reloadTimer = null; }
     if (highlightTimer) { clearTimeout(highlightTimer); highlightTimer = null; }
@@ -2241,6 +2359,20 @@
       pinned = true;
     }
     emitChangeSnapshot(emptyChangeSnapshot(activeSessionId));
+  }
+
+  // ---- per-session composer drafts -------------------------------------------
+  function composerDraftKey(sessionId) { return sessionId ?? '__draft__'; }
+
+  // Save the outgoing session's unsent text; restore the incoming one's.
+  function swapComposerDraft(nextSessionId) {
+    if (!composerEl) return;
+    composerDrafts.set(composerDraftKey(activeSessionId), composerEl.value);
+    const next = composerDrafts.get(composerDraftKey(nextSessionId));
+    composerEl.value = typeof next === 'string' ? next : '';
+    autoGrow();
+    updateSendBtn();
+    slashAutocomplete?.close?.();
   }
 
   function setComposerText(text, { focus = true } = {}) {
@@ -2292,22 +2424,24 @@
     transcriptEl.querySelectorAll('.msg-process').forEach((box) => {
       updateProcessAction(box, box.querySelector('.msg-process-action'));
     });
-    for (const pending of optimisticSteers) {
-      pending.editButton.textContent = T('chat.steer_edit', '편집');
-      pending.editButton.setAttribute('aria-label', T('chat.steer_edit_aria', '대기 중인 작업 조정 편집'));
-      pending.deleteButton.textContent = T('chat.steer_delete', '삭제');
-      pending.deleteButton.setAttribute('aria-label', T('chat.steer_delete_aria', '대기 중인 작업 조정 삭제'));
-      pending.cancelButton.textContent = T('common.cancel', '취소');
-      pending.saveButton.textContent = T('chat.steer_save', '저장');
-      pending.textarea.setAttribute('placeholder', T('chat.steer_edit_placeholder', '조정할 내용을 입력하세요…'));
-      if (pending.status === 'queued') {
-        pending.label.textContent = T('chat.steer_pending', '대기 중인 작업 조정');
-      } else if (pending.status === 'editing') {
-        pending.label.textContent = T('chat.steer_editing', '작업 조정 편집 중');
-      } else if (pending.status === 'sending') {
-        pending.label.textContent = T('chat.steer_sending', '작업 조정 전달 중…');
-      } else if (pending.status === 'sent') {
-        pending.label.textContent = T('chat.steer_sent', '작업 조정 전달됨');
+    for (const card of scheduledCards) {
+      card.editButton.textContent = T('chat.steer_edit', '편집');
+      card.editButton.setAttribute('aria-label', T('chat.scheduled_edit_aria', '예약된 메시지 편집'));
+      card.runButton.textContent = T('chat.scheduled_run', '바로 실행');
+      card.runButton.setAttribute('aria-label', T('chat.scheduled_run_aria', '예약된 메시지 바로 실행'));
+      card.deleteButton.textContent = T('chat.scheduled_cancel', '취소');
+      card.deleteButton.setAttribute('aria-label', T('chat.scheduled_cancel_aria', '예약된 메시지 취소'));
+      card.cancelButton.textContent = T('common.cancel', '취소');
+      card.saveButton.textContent = T('chat.steer_save', '저장');
+      card.textarea.setAttribute('placeholder', T('chat.composer_placeholder', '메시지를 입력하세요…'));
+      if (card.status === 'queued') {
+        card.label.textContent = T('chat.scheduled_pending', '예약된 메시지');
+      } else if (card.status === 'editing') {
+        card.label.textContent = T('chat.scheduled_editing', '예약된 메시지 편집 중');
+      } else if (card.status === 'sending') {
+        card.label.textContent = T('chat.steer_sending', '작업 조정 전달 중…');
+      } else if (card.status === 'sent') {
+        card.label.textContent = T('chat.steer_sent', '작업 조정 전달됨');
       }
     }
   });

@@ -241,75 +241,80 @@
       }
     },
 
-    /** Inject a user adjustment into the active turn without starting a new turn. */
-    async steer(text) {
+    /**
+     * Park a message behind the active turn. The main process runs it as a
+     * continuation once the turn ends; until then the card stays editable.
+     */
+    async scheduleMessage(text) {
       text = String(text ?? '').trim();
       const id = App.state.activeId;
-      if (!text || !id || !App.state.serverReady || typeof window.kimi?.steer !== 'function') {
+      if (!text || !id || !App.state.serverReady || typeof window.kimi?.scheduleMessage !== 'function') {
         return false;
       }
       try {
-        const result = await window.kimi.steer(id, text);
+        const result = await window.kimi.scheduleMessage(id, text);
         scheduleRefreshSessions();
         return result;
       } catch (err) {
-        console.error('steer failed', err);
+        console.error('scheduleMessage failed', err);
         return false;
       }
     },
 
-    /** Pause delivery while the queued adjustment editor is open. */
-    async holdSteer(promptId) {
-      const id = App.state.activeId;
-      if (!promptId || !id || typeof window.kimi?.holdSteer !== 'function') return false;
+    /** Snapshot of the session's waiting messages (session-switch restore). */
+    async listScheduled(sessionId) {
+      if (!sessionId || typeof window.kimi?.listScheduled !== 'function') return [];
       try {
-        return await window.kimi.holdSteer(id, promptId);
+        const items = await window.kimi.listScheduled(sessionId);
+        return Array.isArray(items) ? items : [];
       } catch (err) {
-        console.error('holdSteer failed', err);
-        return false;
+        console.error('listScheduled failed', err);
+        return [];
       }
     },
 
-    /** Resume delivery when queued adjustment editing is cancelled. */
-    async resumeSteer(promptId) {
-      const id = App.state.activeId;
-      if (!promptId || !id || typeof window.kimi?.resumeSteer !== 'function') return false;
-      try {
-        return await window.kimi.resumeSteer(id, promptId);
-      } catch (err) {
-        console.error('resumeSteer failed', err);
-        return false;
-      }
-    },
-
-    /** Replace a steering message while it is still waiting for delivery. */
-    async updateSteer(promptId, text) {
+    /** Replace the text of a waiting scheduled message. */
+    async updateScheduled(promptId, text) {
       text = String(text ?? '').trim();
       const id = App.state.activeId;
       if (
         !text ||
         !promptId ||
         !id ||
-        typeof window.kimi?.updateSteer !== 'function'
+        typeof window.kimi?.updateScheduled !== 'function'
       ) {
         return false;
       }
       try {
-        return await window.kimi.updateSteer(id, promptId, text);
+        return await window.kimi.updateScheduled(id, promptId, text);
       } catch (err) {
-        console.error('updateSteer failed', err);
+        console.error('updateScheduled failed', err);
         return false;
       }
     },
 
-    /** Remove a steering message before the active turn consumes it. */
-    async deleteSteer(promptId) {
+    /** Remove a scheduled message before it runs. */
+    async cancelScheduled(promptId) {
       const id = App.state.activeId;
-      if (!promptId || !id || typeof window.kimi?.deleteSteer !== 'function') return false;
+      if (!promptId || !id || typeof window.kimi?.cancelScheduled !== 'function') return false;
       try {
-        return await window.kimi.deleteSteer(id, promptId);
+        return await window.kimi.cancelScheduled(id, promptId);
       } catch (err) {
-        console.error('deleteSteer failed', err);
+        console.error('cancelScheduled failed', err);
+        return false;
+      }
+    },
+
+    /** Run a scheduled message now (steer into the active turn when busy). */
+    async runScheduled(promptId) {
+      const id = App.state.activeId;
+      if (!promptId || !id || typeof window.kimi?.runScheduled !== 'function') return false;
+      try {
+        const result = await window.kimi.runScheduled(id, promptId);
+        scheduleRefreshSessions();
+        return result;
+      } catch (err) {
+        console.error('runScheduled failed', err);
         return false;
       }
     },

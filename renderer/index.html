@@ -139,11 +139,9 @@
           </div>
           <textarea id="composer" rows="1" placeholder="Type a message…" aria-label="Message input"
                     data-i18n-placeholder="chat.composer_placeholder" data-i18n-aria="chat.composer_aria"></textarea>
-          <button id="composer-abort-btn" type="button" hidden
-                  title="Stop" aria-label="Stop"
-                  data-i18n-title="chat.abort_title" data-i18n-aria="chat.abort_title"></button>
-          <!-- Intentionally empty: the arrow glyph is a CSS mask. During a
-               running turn it sends steering instructions; stop stays separate. -->
+          <!-- Intentionally empty: the glyph is a CSS mask. One button, three
+               faces — SEND when idle, STOP while a turn runs with an empty
+               composer, SCHEDULE while it runs with text typed (chat.js). -->
           <button id="send-btn" type="button" title="Send (↵)" aria-label="Send"
                   data-i18n-title="chat.send_title" data-i18n-aria="chat.send_aria"></button>
           <!-- v3 composer options row: model / swarm / thinking-effort pills

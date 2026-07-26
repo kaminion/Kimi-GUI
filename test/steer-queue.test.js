@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { DirectSteerQueue } = require('../main/steer-queue');
+const { DirectSteerQueue, ScheduledQueue } = require('../main/steer-queue');
 
 test('queued adjustments become ready only after the edit window', () => {
   let now = 1000;
@@ -60,4 +60,28 @@ test('queue changes and turn aborts release waiters', async () => {
   const aborted = queue.waitForReady({ heldPollMs: 10000 });
   controller.abort();
   assert.deepEqual(await aborted, []);
+});
+
+test('scheduled messages wait until explicitly taken, updated, or removed', () => {
+  const queue = new ScheduledQueue();
+  const first = queue.enqueue({ id: 'prompt_1', text: 'First', createdAt: 100 });
+  queue.enqueue({ id: 'prompt_2', text: 'Second', createdAt: 200 });
+
+  assert.equal(first.createdAt, 100);
+  assert.equal(queue.size, 2);
+  assert.deepEqual(queue.list(), [
+    { prompt_id: 'prompt_1', text: 'First', created_at: 100 },
+    { prompt_id: 'prompt_2', text: 'Second', created_at: 200 },
+  ]);
+
+  assert.equal(queue.update('prompt_2', 'Second (revised)').text, 'Second (revised)');
+  assert.equal(queue.update('prompt_404', 'nope'), null);
+
+  // FIFO continuation: the oldest scheduled message runs first.
+  assert.deepEqual(queue.takeNext(), first);
+  assert.equal(queue.size, 1);
+
+  assert.equal(queue.remove('prompt_2').id, 'prompt_2');
+  assert.equal(queue.remove('prompt_2'), null);
+  assert.equal(queue.takeNext(), null);
 });

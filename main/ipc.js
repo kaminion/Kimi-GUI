@@ -262,19 +262,21 @@ function registerIpc({ backend, getWindow, broadcast }) {
 
   handle('sendPrompt', (sessionId, text) => backend.sendPrompt(sessionId, text));
 
-  handle('steer', (sessionId, text) => backend.steer(sessionId, text));
+  // Scheduled messages ("예약된 메시지"): busy-turn sends park here and run
+  // when the turn ends; "run now" steers them into the active turn.
+  handle('scheduleMessage', (sessionId, text) =>
+    backend.scheduleMessage(sessionId, text));
 
-  handle('holdSteer', (sessionId, promptId) =>
-    backend.holdSteer(sessionId, promptId));
+  handle('listScheduled', (sessionId) => backend.listScheduled(sessionId));
 
-  handle('resumeSteer', (sessionId, promptId) =>
-    backend.resumeSteer(sessionId, promptId));
+  handle('updateScheduled', (sessionId, promptId, text) =>
+    backend.updateScheduled(sessionId, promptId, text));
 
-  handle('updateSteer', (sessionId, promptId, text) =>
-    backend.updateSteer(sessionId, promptId, text));
+  handle('cancelScheduled', (sessionId, promptId) =>
+    backend.cancelScheduled(sessionId, promptId));
 
-  handle('deleteSteer', (sessionId, promptId) =>
-    backend.deleteSteer(sessionId, promptId));
+  handle('runScheduled', (sessionId, promptId) =>
+    backend.runScheduled(sessionId, promptId));
 
   handle('abort', (sessionId) => backend.abort(sessionId));
 

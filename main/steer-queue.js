@@ -168,4 +168,64 @@ class DirectSteerQueue {
   }
 }
 
-module.exports = { DirectSteerQueue, STEER_EDIT_WINDOW_MS };
+/**
+ * Per-session queue of scheduled messages ("예약된 메시지").
+ *
+ * Unlike DirectSteerQueue there is no edit window and no waiter machinery:
+ * items stay put until the owner explicitly takes, updates, or removes them.
+ * A busy turn never consumes these mid-turn — the post-turn continuation takes
+ * them one at a time (takeNext), and the renderer's "run now" action moves an
+ * item into the active turn's steer queue instead.
+ */
+class ScheduledQueue {
+  constructor() {
+    this.items = [];
+  }
+
+  get size() {
+    return this.items.length;
+  }
+
+  enqueue({ id, text, createdAt = Date.now() }) {
+    const item = { id, text, createdAt };
+    this.items.push(item);
+    return item;
+  }
+
+  get(id) {
+    return this.items.find((item) => item.id === id) || null;
+  }
+
+  update(id, text) {
+    const item = this.get(id);
+    if (!item) return null;
+    item.text = text;
+    return item;
+  }
+
+  remove(id) {
+    const index = this.items.findIndex((item) => item.id === id);
+    if (index < 0) return null;
+    return this.items.splice(index, 1)[0];
+  }
+
+  /** Remove and return the oldest scheduled message (FIFO continuation). */
+  takeNext() {
+    return this.items.length ? this.items.shift() : null;
+  }
+
+  /** Snapshot for IPC/events: [{prompt_id, text, created_at}]. */
+  list() {
+    return this.items.map((item) => ({
+      prompt_id: item.id,
+      text: item.text,
+      created_at: item.createdAt,
+    }));
+  }
+
+  clear() {
+    this.items = [];
+  }
+}
+
+module.exports = { DirectSteerQueue, ScheduledQueue, STEER_EDIT_WINDOW_MS };
