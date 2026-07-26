@@ -18,6 +18,7 @@
   let launchUpdateCheckStarted = false;
   let draftCwd = null;            // new-chat workspace chosen before first send
   let draftBranch = null;         // local branch chosen for the new chat
+  let draftGroupId = null;        // custom group the new chat belongs to (sidebar group '+')
   let draftGitInfo = null;
   let draftInfoRequest = 0;
   let branchInfoRequest = 0;
@@ -128,10 +129,15 @@
       window.Chat?.scrollToMessage?.(messageId);
     },
 
-    /** Enter draft mode: no active session; one is created lazily on first send. */
-    startNewChat() {
+    /**
+     * Enter draft mode: no active session; one is created lazily on first send.
+     * options.groupId (sidebar group '+') pre-assigns the new chat to a custom
+     * group — the assignment lands in sendPrompt when the session is created.
+     */
+    startNewChat(options) {
       sessionSelectionRequest += 1;
       App.state.activeId = null;
+      draftGroupId = options?.groupId || null;
       App.showView('chat');
       window.Sidebar?.render?.(App.state);
       updateChatHeader();
@@ -202,6 +208,12 @@
           // model must be set via the profile endpoint before the first prompt.
           await applyDefaultModel(session.id);
           await applyDefaultSwarm(session.id); // v4 (R2): settings 스웜 기본값
+          if (draftGroupId) {
+            // Sidebar group '+' draft: file the lazily-created session into
+            // the group before the refresh renders it.
+            window.Sidebar?.assignSession?.(session.id, draftGroupId);
+            draftGroupId = null;
+          }
           await App.refreshSessions();
           App.state.activeId = session.id;
           window.Sidebar?.render?.(App.state);

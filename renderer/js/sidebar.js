@@ -14,7 +14,10 @@
  * - Custom groups pinned ABOVE the recent section: '그룹' header row + '+'
  *   add button (inline-editable '새 그룹' row), collapsible, rename by
  *   double-click, delete by hover '×' (confirm modal; sessions return to
- *   the recent section). Persistence: localStorage 'kimi.customGroups' =
+ *   the recent section), new-chat-in-group by hover '+' (draft mode via
+ *   App.startNewChat({ groupId }); the assignment lands when the first
+ *   send lazily creates the session).
+ *   Persistence: localStorage 'kimi.customGroups' =
  *   { groups:[{id,name,collapsed}], assign:{sessionId:groupId} }.
  * - HTML5 drag & drop: .session-item[draggable]; custom group headers AND
  *   containers are drop targets (.drop-target highlight); a '그룹 해제'
@@ -682,6 +685,16 @@
     }
 
     const count = el('span', 'session-group-count', String(itemCount));
+    const add = el('button', 'custom-group-new-chat', '+');
+    add.type = 'button';
+    add.title = T('sidebar.group_new_chat_title', '이 그룹에서 새 대화');
+    add.setAttribute('aria-label', T('sidebar.group_new_chat_title', '이 그룹에서 새 대화'));
+    add.addEventListener('click', (e) => {
+      e.stopPropagation();
+      // Draft mode with the group attached; app.js assigns the session to
+      // the group when the first send lazily creates it.
+      window.App?.startNewChat?.({ groupId: group.id });
+    });
     const del = el('button', 'custom-group-delete', '×');
     del.type = 'button';
     del.title = T('sidebar.group_delete_title', '그룹 삭제');
@@ -690,7 +703,7 @@
       e.stopPropagation();
       requestGroupDelete(group);
     });
-    header.append(count, del);
+    header.append(count, add, del);
 
     header.addEventListener('click', () => toggleCustomCollapsed(group.id));
     header.addEventListener('keydown', (e) => {
@@ -818,5 +831,5 @@
     if (window.App?.state) render(window.App.state);
   });
 
-  window.Sidebar = { render, renderLoading };
+  window.Sidebar = { render, renderLoading, assignSession };
 })();

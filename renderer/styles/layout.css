@@ -637,8 +637,9 @@ body {
   margin-top: var(--space-2);
 }
 
-/* Group delete '×': appears on header hover, before the trailing count. */
-.custom-group-delete {
+/* Group hover actions ('+' new chat, '×' delete): appear on header hover. */
+.custom-group-delete,
+.custom-group-new-chat {
   flex: none;
   width: 16px;
   height: 16px;
@@ -652,14 +653,25 @@ body {
   opacity: 0;
 }
 
+.custom-group-new-chat {
+  font-size: 13px;
+}
+
 .custom-group-label:hover .custom-group-delete,
-.custom-group-delete:focus-visible {
+.custom-group-label:hover .custom-group-new-chat,
+.custom-group-delete:focus-visible,
+.custom-group-new-chat:focus-visible {
   opacity: 1;
 }
 
 .custom-group-delete:hover {
   background: var(--hover-bg);
   color: var(--danger);
+}
+
+.custom-group-new-chat:hover {
+  background: var(--hover-bg);
+  color: var(--text);
 }
 
 /* Drop-target highlight on custom group header + container. */
