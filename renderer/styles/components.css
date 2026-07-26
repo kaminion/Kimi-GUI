@@ -2286,7 +2286,9 @@
   padding: var(--space-1) 0 var(--space-2);
 }
 
-/* Thinking prose inside the block: the dim italic voice of .msg-thinking. */
+/* Thinking prose inside the block: the dim italic voice of .msg-thinking.
+   Secondary voice → denser paragraphs than primary markdown (12px → 8px),
+   so long thinking doesn't inflate the space between conversations. */
 .msg-process-thinking {
   margin: var(--space-1) 0 var(--space-2);
   font-style: italic;
@@ -2297,6 +2299,10 @@
   font-size: 13px;
   line-height: 1.5;
   color: var(--text-dim);
+}
+
+.msg-process-thinking .md p {
+  margin: var(--space-2) 0;
 }
 
 /* Tool steps pack tighter inside the block than top-level rows. */

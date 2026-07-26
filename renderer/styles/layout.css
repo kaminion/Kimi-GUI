@@ -509,14 +509,16 @@ body {
   overflow-wrap: anywhere;
 }
 
-/* Message gap: 20px (CONTRACT-V3; off-grid on purpose) */
+/* Message gap: 16px between rows, 24px before a new user turn. Tightened
+   from 20/32px (CONTRACT-V3) — long thinking blocks made the old rhythm
+   read as disconnected empty space; secondary voices stay denser. */
 #transcript > * + * {
-  margin-top: 20px;
+  margin-top: var(--space-3);
 }
 
 /* New turn gets extra separation (id specificity needed to beat the rule above) */
 #transcript > .msg-user:not(:first-child) {
-  margin-top: var(--space-5);
+  margin-top: var(--space-4);
 }
 
 /* Consecutive tool rows pack tighter */

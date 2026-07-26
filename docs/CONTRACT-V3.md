@@ -158,7 +158,8 @@ mtime-cached like search.js. Expose as preload `getDailyUsage()`.
 - Readability: .md 15px/1.65, transcript max-width 800px, paragraph spacing 12px, headings rhythm,
   inline code bg contrast up, code block padding 12px 14px + 13px mono, tables hairline,
   .msg-user = raised bubble (surface-raised, radius 12px, padding 10px 14px, accent 3px left border),
-  message gap 20px, thinking 13px dim italic with left hairline.
+  message gap 16px rows / 24px before user turns (tightened from 20/32px after long-thinking feedback),
+  thinking 13px dim italic with left hairline, thinking paragraphs 8px (secondary voice, denser).
 - Animations per skill rules: enter = ease-out only, 150–250ms micro-interactions, transform+opacity
   only, no bounce on modals; audit existing keyframes (spinner ok) and FIX any ease-in enters.
 - Keep every existing selector working (R1/R2/B4 add classes — coordinate via their reports next wave).
