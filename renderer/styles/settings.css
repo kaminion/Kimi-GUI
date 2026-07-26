@@ -946,7 +946,7 @@ button.draft-context-control:hover {
   justify-content: center;
   width: calc(100% - var(--space-5));
   max-width: 800px;
-  min-height: 24px;
+  min-height: 34px;
   margin: 0 auto var(--space-1);
 }
 
@@ -958,20 +958,22 @@ button.draft-context-control:hover {
 #composer-change-status #changes-summary-btn {
   flex: none;
   min-width: 0;
-  height: 24px;
+  min-height: 34px;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 0 8px;
-  border: 0.5px solid var(--border);
+  gap: var(--space-2);
+  padding: 0 14px;
+  border: 1px solid var(--border);
   border-radius: 999px;
   background: var(--bg-secondary);
-  color: var(--text-secondary);
+  color: var(--text);
   font-family: var(--font-ui);
-  font-size: 11px;
+  font-size: 12px;
+  font-weight: 500;
   line-height: 1;
   white-space: nowrap;
   cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
 }
 
 #composer-change-status #changes-summary-btn[hidden] {
@@ -979,25 +981,30 @@ button.draft-context-control:hover {
 }
 
 #composer-change-status #changes-summary-btn:hover {
-  border-color: color-mix(in srgb, var(--accent) 38%, var(--border));
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
   background: var(--hover-bg);
   color: var(--text);
 }
 
 #composer-change-status #changes-summary-btn:active {
-  transform: scale(0.98);
+  transform: scale(0.97);
   background: var(--active-bg);
 }
 
+#composer-change-status #changes-summary-btn .change-stat {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
 .changes-summary-label {
-  max-width: 130px;
+  max-width: 160px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .changes-summary-chevron {
   color: var(--text-dim);
-  font-size: 14px;
+  font-size: 16px;
 }
 
 #branch-indicator {
@@ -1047,7 +1054,7 @@ button.draft-context-control:hover {
 
 @media (max-width: 640px) {
   .changes-summary-label {
-    max-width: 92px;
+    max-width: 110px;
   }
 
   #draft-context {
