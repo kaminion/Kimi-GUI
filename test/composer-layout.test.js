@@ -8,10 +8,12 @@ const assert = require('node:assert/strict');
 const root = path.resolve(__dirname, '..');
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8');
 
-test('changes pill rides the composer options row; the full-width strip is gone', () => {
+test('changes pill floats above the composer, outside the options row', () => {
   const html = read('renderer/index.html');
+  const styles = read('renderer/styles/settings.css');
 
-  // v9: the strip above the composer was replaced by a pill in the options row.
+  // v9: the strip above the composer was replaced by a pill; v10: the pill
+  // left the options row and floats just above the composer.
   assert.equal(html.includes('composer-change-status'), false);
   assert.equal(html.includes('changes-summary-btn'), false);
 
@@ -19,10 +21,15 @@ test('changes pill rides the composer options row; the full-width strip is gone'
   const rowEnd = html.indexOf('id="branch-indicator"', rowStart);
   assert.ok(rowStart >= 0 && rowEnd > rowStart);
   const row = html.slice(rowStart, rowEnd);
-  // The pill trails the option pills (after swarm) and starts hidden.
-  assert.ok(row.indexOf('id="swarm-toggle"') < row.indexOf('id="changes-pill"'));
-  assert.match(row, /id="changes-pill" class="pill" type="button" hidden/);
-  assert.match(row, /id="changes-pill"[^>]*aria-haspopup="true"/);
+  assert.equal(row.includes('id="changes-pill"'), false, 'pill is out of the options row');
+
+  // …but still present in the composer wrap, hidden until changes exist.
+  assert.match(html, /id="changes-pill" class="pill" type="button" hidden/);
+  assert.match(html, /id="changes-pill"[^>]*aria-haspopup="true"/);
+
+  // Floating popup chrome: anchored above the wrap, raised, shadowed.
+  assert.match(styles, /#changes-pill \{[^}]*position: absolute;[^}]*bottom: calc\(100% \+ 4px\);/s);
+  assert.match(styles, /#changes-pill \{[^}]*box-shadow: var\(--shadow-card\);/s);
 });
 
 test('changes popover reuses the dropdown chrome; strip styles are removed', () => {

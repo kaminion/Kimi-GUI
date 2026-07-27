@@ -146,23 +146,24 @@
           <!-- v3 composer options row (chat-options.js binds these; wraps below
                the textarea via CSS). v7 order: model / thinking / permission /
                swarm — model+thinking shape the answer, permission gates tool
-               approval, swarm rides last (cli-only; inert under direct). The
-               changes pill trails them: conversation file-change totals that
-               open a popover file list (panel.js). -->
+               approval, swarm rides last (cli-only; inert under direct). -->
           <div id="composer-options">
             <button id="model-select" class="pill" type="button"
                     title="Select model — applies to this chat" data-i18n-title="options.model.pick_title"></button>
             <button id="effort-select" class="pill" type="button" hidden></button>
             <button id="permission-select" class="pill" type="button" hidden></button>
             <button id="swarm-toggle" class="pill" type="button" hidden></button>
-            <button id="changes-pill" class="pill" type="button" hidden
-                    aria-haspopup="true" aria-expanded="false"
-                    title="Review file changes" aria-label="Review file changes"
-                    data-i18n-title="changes.open_review" data-i18n-aria="changes.open_review"></button>
             <span id="branch-indicator" role="status" hidden></span>
             <!-- context meter rides at the row's right edge (v5) -->
             <span id="context-meter" role="status"></span>
           </div>
+          <!-- Changes pill: conversation file-change totals (panel.js). It
+               floats just ABOVE the composer (settings.css), outside the
+               options row; clicking opens the popover file list upward. -->
+          <button id="changes-pill" class="pill" type="button" hidden
+                  aria-haspopup="true" aria-expanded="false"
+                  title="Review file changes" aria-label="Review file changes"
+                  data-i18n-title="changes.open_review" data-i18n-aria="changes.open_review"></button>
         </div>
       </section>
       <section id="usage-view" hidden>

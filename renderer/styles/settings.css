@@ -1088,8 +1088,38 @@ button.draft-context-control:hover {
   flex: none;
 }
 
-/* Change-summary pill rides the composer options row (base .pill style covers
-   layout + the hidden-fade); only the stat numerals need a local tweak. */
+/* Changes pill: floats just above the composer, outside the options row
+   (anchored to #composer-wrap, which is position:relative). Raised surface +
+   card shadow so it reads as a small popup, not a stray ghost pill. */
+#changes-pill {
+  position: absolute;
+  left: 12px;
+  bottom: calc(100% + 4px);
+  z-index: 4;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 8px;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--text-secondary);
+  background: var(--surface-raised);
+  border: 0.5px solid var(--border);
+  border-radius: 999px;
+  box-shadow: var(--shadow-card);
+  white-space: nowrap;
+  cursor: default;
+  user-select: none;
+}
+
+#changes-pill:hover {
+  background: var(--hover-bg);
+  color: var(--text);
+}
+
 #changes-pill .change-stat {
   font-weight: 600;
   font-variant-numeric: tabular-nums;
