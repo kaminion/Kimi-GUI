@@ -57,6 +57,8 @@ const api = {
   listSlashCommands: ({ sessionId, cwd } = {}) =>
     invoke('listSlashCommands', { sessionId, cwd }),
   getMessages: (sessionId) => invoke('getMessages', sessionId),
+  // Paged history for the transcript's infinite scroll: {items, hasMore}.
+  getMessagesPage: (sessionId, beforeId) => invoke('getMessagesPage', sessionId, beforeId),
   getProfile: (sessionId) => invoke('getProfile', sessionId),
   sendPrompt: (sessionId, text) => invoke('sendPrompt', sessionId, text),
   // Scheduled messages ("예약된 메시지"): busy-turn sends park per session and

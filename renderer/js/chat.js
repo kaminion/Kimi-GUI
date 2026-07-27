@@ -130,6 +130,9 @@
   let highlightTimer = null;        // pending removal of a .search-highlight flash
   let historyLoadingTimer = null;
   let historyLoadingSessionId = null;
+  let historyHasMore = false;         // older pages exist on the source (infinite scroll)
+  let historyLoadingOlder = false;    // a backwards page fetch is in flight
+  let olderSkeleton = null;           // top-of-transcript skeleton while paging back
 
   // ---- small helpers -------------------------------------------------------
   function el(tag, className, text) {
@@ -1361,8 +1364,12 @@
     reloadTimer = setTimeout(async () => {
       reloadTimer = null;
       try {
-        const list = await window.kimi.getMessages(activeSessionId);
+        const page = typeof window.kimi.getMessagesPage === 'function'
+          ? await window.kimi.getMessagesPage(activeSessionId)
+          : { items: await window.kimi.getMessages(activeSessionId), hasMore: false };
+        const list = page?.items;
         if (Array.isArray(list)) {
+          historyHasMore = !!page?.hasMore;
           optimisticUser = null;
           messages = sortByTime(list.map(normMessage).filter((m) => !isMachineMessage(m)));
           // Run-now cards settle here: history now carries their message.
@@ -1373,6 +1380,54 @@
         }
       } catch { /* transient: next event will retry */ }
     }, RELOAD_DEBOUNCE_MS);
+  }
+
+  // ---- older history (infinite scroll) ----------------------------------------
+  // Newest page loads first; scrolling to the top pages backwards with a small
+  // skeleton, keeping the viewport anchored to the message being read.
+  function setOlderSkeleton(show) {
+    if (!transcriptEl) return;
+    if (show && !olderSkeleton) {
+      olderSkeleton = el('div', 'history-older-skeleton');
+      olderSkeleton.setAttribute('role', 'status');
+      olderSkeleton.setAttribute('aria-label', T('chat.loading_history', '대화 기록을 불러오는 중…'));
+      for (let i = 0; i < 3; i += 1) {
+        olderSkeleton.append(el('span', 'history-older-line line-' + (i + 1)));
+      }
+      transcriptEl.prepend(olderSkeleton);
+    } else if (!show && olderSkeleton) {
+      olderSkeleton.remove();
+      olderSkeleton = null;
+    }
+  }
+
+  async function loadOlderHistory() {
+    if (historyLoadingOlder || !historyHasMore || !activeSessionId) return;
+    if (typeof window.kimi?.getMessagesPage !== 'function') return;
+    const oldest = messages[0]?.id;
+    if (!oldest) return;
+    const sid = activeSessionId;
+    historyLoadingOlder = true;
+    setOlderSkeleton(true);
+    // Anchor before mutating: the skeleton wipes with the redraw, so the
+    // scrollHeight delta is exactly the height the new page added.
+    const prevHeight = transcriptEl.scrollHeight;
+    const prevTop = transcriptEl.scrollTop;
+    try {
+      const page = await window.kimi.getMessagesPage(sid, oldest);
+      if (sid !== activeSessionId) return; // session switched mid-fetch
+      if (!page || !Array.isArray(page.items)) return;
+      historyHasMore = !!page.hasMore;
+      const older = page.items.map(normMessage).filter((m) => !isMachineMessage(m));
+      if (!older.length) return;
+      messages = sortByTime([...older, ...messages]);
+      fullRedraw();
+      transcriptEl.scrollTop = prevTop + (transcriptEl.scrollHeight - prevHeight);
+    } catch { /* transient: the next top-scroll retries */ }
+    finally {
+      historyLoadingOlder = false;
+      setOlderSkeleton(false);
+    }
   }
 
   // ---- live (id-less) delta streaming -----------------------------------------
@@ -2350,7 +2405,10 @@
       },
     }) ?? null;
     wireComposer();
-    transcriptEl.addEventListener('scroll', () => { pinned = isPinned(); });
+    transcriptEl.addEventListener('scroll', () => {
+      pinned = isPinned();
+      if (transcriptEl.scrollTop < 60) void loadOlderHistory();
+    });
     // User disclosure intent for process blocks: a click on the header records
     // intent before the default toggle (box.open is still pre-toggle here), so
     // auto-close at turn end and re-renders can respect it.
@@ -2372,7 +2430,7 @@
     refreshComposerUi();
   }
 
-  function renderMessages(list, sessionId) {
+  function renderMessages(list, sessionId, page) {
     if (!initialized) init();
     if (!initialized) return;
     clearHistoryLoading();
@@ -2382,6 +2440,9 @@
     }
     slashAutocomplete?.refresh?.();
     if (reloadTimer) { clearTimeout(reloadTimer); reloadTimer = null; }
+    historyHasMore = !!page?.hasMore;
+    historyLoadingOlder = false;
+    olderSkeleton = null;
     optimisticUser = null;
     consumedEchoes = [];
     scheduledCards = [];
@@ -2425,6 +2486,9 @@
     scheduledCards = [];
     composerDrafts.clear();
     readOnly = false;
+    historyHasMore = false;
+    historyLoadingOlder = false;
+    olderSkeleton = null;
     if (reloadTimer) { clearTimeout(reloadTimer); reloadTimer = null; }
     if (highlightTimer) { clearTimeout(highlightTimer); highlightTimer = null; }
     clearHistoryLoading();

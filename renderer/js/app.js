@@ -111,10 +111,13 @@
       });
 
       try {
-        const messages = await window.kimi.getMessages(id);
+        // Paged load: the newest page first; older pages follow on top-scroll.
+        const page = typeof window.kimi.getMessagesPage === 'function'
+          ? await window.kimi.getMessagesPage(id)
+          : { items: await window.kimi.getMessages(id), hasMore: false };
         if (App.state.activeId !== id || requestId !== sessionSelectionRequest) return;
         // Pass the id: chat.js filters WS events by its activeSessionId.
-        window.Chat?.renderMessages?.(messages, id);
+        window.Chat?.renderMessages?.(page?.items ?? [], id, { hasMore: !!page?.hasMore });
       } catch (err) {
         console.error('getMessages failed', err);
         if (App.state.activeId === id && requestId === sessionSelectionRequest) {

@@ -949,6 +949,47 @@ async function getMessages(sessionId) {
   return Promise.resolve(store.getMessages(sessionId));
 }
 
+const HISTORY_PAGE_SIZE = 100; // the daemon's page_size cap
+
+/** Same {items, hasMore} shape as the daemon for local (direct/CLI-tree) history. */
+function pageLocalHistory(all, beforeId) {
+  const list = Array.isArray(all) ? all : [];
+  if (!beforeId) {
+    return { items: list.slice(-HISTORY_PAGE_SIZE), hasMore: list.length > HISTORY_PAGE_SIZE };
+  }
+  const idx = list.findIndex((m) => String(m?.id) === String(beforeId));
+  const end = idx < 0 ? list.length : idx;
+  const start = Math.max(0, end - HISTORY_PAGE_SIZE);
+  return { items: list.slice(start, end), hasMore: start > 0 };
+}
+
+/**
+ * Paged history for the transcript's infinite scroll: {items, hasMore}.
+ * Mirrors getMessages' source routing; pass the oldest loaded id as beforeId.
+ */
+async function getMessagesPage(sessionId, beforeId) {
+  if (currentEngine === 'cli') {
+    const resolved = await resolveDirectStoreOnly(sessionId);
+    if (resolved) return pageLocalHistory(await resolved.store.getMessages(sessionId), beforeId);
+    const client = requireCli();
+    if (typeof sessionId === 'string' && sessionId) client.subscribeSession(sessionId);
+    try {
+      return await client.getMessagesPage(sessionId, { beforeId });
+    } catch (err) {
+      const cliSessions = loadCliSessions();
+      if (cliSessions && typeof cliSessions.resolve === 'function') {
+        const found = await cliSessions.resolve(sessionId).catch(() => null);
+        if (found) return pageLocalHistory(await cliSessions.getMessages(sessionId), beforeId);
+      }
+      throw err;
+    }
+  }
+  const d = requireDirect();
+  const resolved = await resolveDirectSessionStore(sessionId);
+  const store = resolved ? resolved.store : d.store;
+  return pageLocalHistory(await store.getMessages(sessionId), beforeId);
+}
+
 function contextLimitFor(model) {
   const found = DIRECT_MODELS.find((m) => m.model === model);
   return found ? found.contextLimit : 262144; // defensive: some k3 tiers are 256k
@@ -1746,6 +1787,7 @@ module.exports = {
   listSessions,
   createSession,
   getMessages,
+  getMessagesPage,
   getProfile,
   sendPrompt,
   scheduleMessage,

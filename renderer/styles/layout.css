@@ -489,6 +489,28 @@ body {
 .transcript-skeleton-line.is-medium { width: 58%; }
 .transcript-skeleton-line.is-short { width: 34%; }
 
+/* Older-history paging skeleton: three compact lines pinned at the transcript
+   top while the previous page loads (infinite scroll). Same pulse + rhythm as
+   the full-history skeleton above, denser so it reads as a continuation. */
+.history-older-skeleton {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2) var(--space-3);
+  pointer-events: none;
+}
+
+.history-older-line {
+  display: block;
+  height: 11px;
+  background: var(--active-bg);
+  border-radius: var(--radius-s);
+  animation: loading-skeleton-pulse 1.35s var(--ease-in-out) infinite;
+}
+
+.history-older-line.line-1 { width: 34%; }
+.history-older-line.line-2 { width: 62%; animation-delay: 80ms; }
+.history-older-line.line-3 { width: 48%; animation-delay: 160ms; }
+
 .transcript-load-error {
   width: min(100%, 520px);
   padding: var(--space-4);

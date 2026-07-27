@@ -267,6 +267,9 @@ function registerIpc({ backend, getWindow, broadcast }) {
   });
 
   handle('getMessages', (sessionId) => backend.getMessages(sessionId));
+  handle('getMessagesPage', (sessionId, beforeId) =>
+    backend.getMessagesPage(sessionId, beforeId),
+  );
 
   handle('getProfile', (sessionId) => backend.getProfile(sessionId));
 

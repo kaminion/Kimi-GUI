@@ -303,6 +303,26 @@ class KimiClient extends EventEmitter {
     return (d?.items ?? []).slice().reverse();
   }
 
+  /**
+   * One page of history: {items (chronological), hasMore}. The wire is
+   * newest-first; pass the oldest loaded message id as beforeId to page
+   * backwards (infinite scroll). page_size caps at 100 on the daemon.
+   */
+  async getMessagesPage(id, { beforeId, pageSize = 100 } = {}) {
+    const params = new URLSearchParams();
+    if (beforeId) params.set('before_id', String(beforeId));
+    if (pageSize) params.set('page_size', String(pageSize));
+    const qs = params.toString();
+    const d = await this.request(
+      'GET',
+      `/sessions/${encodeURIComponent(id)}/messages${qs ? '?' + qs : ''}`,
+    );
+    return {
+      items: (d?.items ?? []).slice().reverse(),
+      hasMore: !!(d?.has_more ?? d?.hasMore),
+    };
+  }
+
   /** Queue/send a user prompt. Returns {prompt_id, user_message_id, status, ...}. */
   sendPrompt(id, text) {
     return this.request('POST', `/sessions/${encodeURIComponent(id)}/prompts`, {
