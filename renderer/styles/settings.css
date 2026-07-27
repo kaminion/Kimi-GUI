@@ -1093,7 +1093,8 @@ button.draft-context-control:hover {
    card shadow so it reads as a small popup, not a stray ghost pill. */
 #changes-pill {
   position: absolute;
-  left: 12px;
+  left: 50%;
+  transform: translateX(-50%); /* horizontally centered above the input box */
   bottom: calc(100% + 4px);
   z-index: 4;
   flex: none;
