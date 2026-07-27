@@ -48,7 +48,8 @@
  * friendly error event + a rejected promise, while a message sent mid-turn is
  * parked in the session's scheduled queue (scheduleMessage) and runs as a
  * continuation when the turn ends. respondApproval resolves the pending tool
- * approval; abort interrupts the turn via AbortController.
+ * approval; abort interrupts the turn via AbortController, then auto-runs the
+ * next scheduled message (stop hands the session to the queue).
  *
  * Never logs tokens or credential contents.
  */
@@ -1165,8 +1166,10 @@ async function directSendPrompt(sessionId, text) {
   };
 
   // The turn runs async; sendPrompt returns immediately. runTurn persists the
-  // completed turn via store.appendTurn itself (CONTRACT-V3 B2).
-  (async () => {
+  // completed turn via store.appendTurn itself (CONTRACT-V3 B2). turn.done
+  // settles once the turn has fully unwound (abort() awaits it before handing
+  // the session to the next scheduled message).
+  turn.done = (async () => {
     let reason = 'completed';
     try {
       let prompt = String(text);
@@ -1468,7 +1471,34 @@ function abortDirectTurn(sessionId) {
 
 async function abort(sessionId) {
   if (currentEngine === 'cli') return requireCli().abort(sessionId);
-  return { ok: abortDirectTurn(sessionId) };
+  const turn = activeTurns.get(sessionId);
+  if (!turn) return { ok: false };
+  abortDirectTurn(sessionId);
+  // Hand the session to the queue: stopping auto-runs the next scheduled
+  // message. Wait for the interrupted turn to unwind first — it holds
+  // activeTurns until its finally block, and a premature directSendPrompt
+  // would reject (and the dequeued message would be lost). If the unwind
+  // stalls, leave the queue untouched rather than drop the message.
+  try {
+    await Promise.race([
+      turn.done,
+      new Promise((resolve) => setTimeout(resolve, 5000)),
+    ]);
+  } catch { /* unwind errors already surfaced via the error event */ }
+  if (activeTurns.has(sessionId)) return { ok: true };
+  const next = scheduledQueues.get(sessionId)?.takeNext();
+  if (next) {
+    emitScheduledUpdated(sessionId, [
+      { prompt_id: next.id, text: next.text, reason: 'started' },
+    ]);
+    try {
+      await directSendPrompt(sessionId, next.text);
+    } catch (err) {
+      console.error(`[backend] scheduled auto-run after abort failed: ${err.message}`);
+      emitSession(sessionId, { type: 'error', message: err.message });
+    }
+  }
+  return { ok: true };
 }
 
 async function respondApproval(sessionId, approvalId, decision) {
