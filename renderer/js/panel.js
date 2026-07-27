@@ -428,26 +428,22 @@
     }
   }
 
-  /** Anchor the popover to the pill; clamp horizontally, open upward when it
-   * would overflow the window bottom (the composer row sits at the bottom
-   * edge, so upward is the common case). Safe to call again after refills. */
+  /** Anchor the popover to the pill; clamp horizontally, and ALWAYS open
+   * upward — the pill rides the composer options row at the bottom edge, so
+   * opening downward would overlap the chat input. Safe to call again after
+   * refills. */
   function placePopover() {
     if (!popover || !els.changesPill) return;
     const r = els.changesPill.getBoundingClientRect();
     popover.style.left = `${Math.max(8, r.left)}px`;
-    popover.style.top = `${r.bottom + 4}px`;
     let pr = popover.getBoundingClientRect();
     if (pr.right > window.innerWidth - 8) {
       popover.style.left = `${Math.max(8, window.innerWidth - 8 - pr.width)}px`;
     }
     pr = popover.getBoundingClientRect();
-    const flipped = pr.bottom > window.innerHeight - 8;
-    if (flipped) {
-      popover.style.top = `${Math.max(8, r.top - pr.height - 4)}px`;
-    }
-    /* Enter animation (settings.css model-dropdown-in) grows from the pill:
-       origin rides the edge the popover is anchored to. */
-    popover.style.transformOrigin = flipped ? 'bottom left' : 'top left';
+    popover.style.top = `${Math.max(8, r.top - pr.height - 4)}px`;
+    /* Enter animation (settings.css model-dropdown-in) grows from the pill. */
+    popover.style.transformOrigin = 'bottom left';
   }
 
   function fillPopover(st) {

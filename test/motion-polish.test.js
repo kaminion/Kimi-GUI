@@ -82,7 +82,8 @@ test('changes popover grows from its pill with the shared dropdown motion', () =
   // above); the popover reuses the model-dropdown grow-from-owner animation.
   assert.equal(styles.includes('#composer-change-status'), false);
   assert.match(js, /'model-dropdown changes-popover'/);
-  // placePopover() flips the origin when the list opens upward (the common
-  // case — the composer row sits at the window's bottom edge).
-  assert.match(js, /transformOrigin = flipped \? 'bottom left' : 'top left'/);
+  // placePopover() always opens upward (the pill rides the composer options
+  // row at the window's bottom edge) and grows from the pill.
+  assert.match(js, /popover\.style\.top = `\$\{Math\.max\(8, r\.top - pr\.height - 4\)\}px`/);
+  assert.match(js, /transformOrigin = 'bottom left'/);
 });
