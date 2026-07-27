@@ -2277,9 +2277,11 @@
 
 .msg-process[open] > .msg-process-header {
   position: sticky;
-  /* Flush to the scrollport top: an offset let long thinking scroll by in a
-     visible strip above the floating header. */
-  top: 0;
+  /* Chromium constrains sticky to the scroll container's content box, so
+     top:0 still stopped 28px short (the transcript's top padding) and let
+     long thinking scroll by in a visible strip above the header. -28px
+     cancels the padding: the header clings to the scrollport's top edge. */
+  top: -28px;
   z-index: 3;
   margin-left: -10px;
   margin-right: -4px;
