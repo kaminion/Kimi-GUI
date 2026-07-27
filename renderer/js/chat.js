@@ -677,7 +677,9 @@
     const hasBody = change.rows.length > 0 || state === 'error';
     const card = el(hasBody ? 'details' : 'div', 'msg-change ' + state + (hasBody ? '' : ' no-detail'));
     card.dataset.changePath = change.path;
-    if (hasBody) card.open = total === 1 || index === 0;
+    // Collapsed by default: the summary row carries path + stats, and the
+    // diff opens only on demand (live rebuilds preserve user toggles).
+    if (hasBody) card.open = false;
 
     const summary = document.createElement(hasBody ? 'summary' : 'div');
     summary.className = 'msg-change-header';
