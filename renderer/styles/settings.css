@@ -1077,8 +1077,15 @@ button.draft-context-control:hover {
   color: var(--danger);
 }
 
-#draft-context:has(#draft-context-error:not([hidden])) {
+#draft-context:has(#draft-context-error:not([hidden])),
+#draft-context:has(#draft-group-chip:not([hidden])) {
   flex-wrap: wrap;
+}
+
+/* The group chip (sidebar group '+' drafts) sizes to its content; the
+   Project/Branch controls keep their flex shares on the first row. */
+#draft-group-chip {
+  flex: none;
 }
 
 /* Change-summary pill rides the composer options row (base .pill style covers

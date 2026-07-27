@@ -129,6 +129,11 @@
                 <option data-i18n="workspace.none">None</option>
               </select>
             </label>
+            <!-- Sidebar group '+' drafts only: where the new chat will land. -->
+            <span id="draft-group-chip" class="draft-context-control" hidden>
+              <span class="draft-context-label" data-i18n="workspace.group">Group</span>
+              <span id="draft-group-value" class="draft-context-value"></span>
+            </span>
             <span id="draft-context-error" role="alert" hidden></span>
           </div>
           <textarea id="composer" rows="1" placeholder="Type a message…" aria-label="Message input"

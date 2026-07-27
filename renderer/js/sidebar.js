@@ -16,7 +16,9 @@
  *   double-click, delete by hover '×' (confirm modal; sessions return to
  *   the recent section), new-chat-in-group by hover '+' (draft mode via
  *   App.startNewChat({ groupId }); the assignment lands when the first
- *   send lazily creates the session).
+ *   send lazily creates the session). While that group draft is pending,
+ *   the target group is marked: .draft-target highlight on the group plus
+ *   a '새 대화' badge (.custom-group-draft-badge) in its header.
  *   Persistence: localStorage 'kimi.customGroups' =
  *   { groups:[{id,name,collapsed}], assign:{sessionId:groupId} }.
  * - HTML5 drag & drop: .session-item[draggable]; custom group headers AND
@@ -176,6 +178,12 @@
       if (g) g.collapsed = !g.collapsed;
     });
     rerender();
+  }
+
+  /** Group name for the draft-target chip; undefined when the group is gone. */
+  function getGroupName(groupId) {
+    if (!groupId) return undefined;
+    return readCustomGroups().groups.find((g) => g.id === groupId)?.name;
   }
 
   /* ---- confirm modal (v3; reuses .modal-backdrop/.modal + .btn classes) ---- */
@@ -705,6 +713,15 @@
     });
     header.append(count, add, del);
 
+    // Group '+' starts a draft that lands in THIS group on first send: mark
+    // the target while the draft is pending so the destination is visible.
+    if (window.App?.getDraftGroupId?.() === group.id) {
+      header.insertBefore(
+        el('span', 'custom-group-draft-badge', T('sidebar.group_draft_badge', '새 대화')),
+        add,
+      );
+    }
+
     header.addEventListener('click', () => toggleCustomCollapsed(group.id));
     header.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === ' ') {
@@ -744,6 +761,8 @@
       const groupEl = el('div', 'session-group custom-group');
       groupEl.dataset.groupId = group.id;
       if (group.collapsed) groupEl.classList.add('collapsed');
+      // Highlight the group a pending new-chat draft will be filed into.
+      if (window.App?.getDraftGroupId?.() === group.id) groupEl.classList.add('draft-target');
       groupEl.appendChild(renderCustomGroupLabel(group, items.length));
       if (!group.collapsed) {
         for (const s of items) groupEl.appendChild(renderItem(s, state));
@@ -831,5 +850,5 @@
     if (window.App?.state) render(window.App.state);
   });
 
-  window.Sidebar = { render, renderLoading, assignSession };
+  window.Sidebar = { render, renderLoading, assignSession, getGroupName };
 })();

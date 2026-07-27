@@ -650,8 +650,8 @@ body {
 .custom-group-delete,
 .custom-group-new-chat {
   flex: none;
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -664,6 +664,12 @@ body {
 
 .custom-group-new-chat {
   font-size: 13px;
+}
+
+/* The label's 4px flex gap alone put the destructive '×' one misclick away
+   from '+'; double the gap between the two action buttons. */
+.custom-group-delete {
+  margin-left: var(--space-1);
 }
 
 .custom-group-label:hover .custom-group-delete,
@@ -688,6 +694,24 @@ body {
   background: var(--accent-soft);
   border-radius: var(--radius-m);
   box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+/* Draft target: the group the pending new chat (group '+') will be filed
+   into on first send — softer than the drop-target ring, plus a badge. */
+.custom-group.draft-target > .session-group-label {
+  background: var(--accent-soft);
+  border-radius: var(--radius-m);
+}
+
+.custom-group-draft-badge {
+  flex: none;
+  padding: 1px var(--space-1);
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--accent-text);
+  background: var(--accent);
+  border-radius: 999px;
 }
 
 /* '그룹 해제' zone: pinned at the sidebar bottom while body.dnd-active. */

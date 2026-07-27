@@ -150,6 +150,16 @@
       $('#composer')?.focus();
     },
 
+    /**
+     * Custom group the pending draft will be filed into (sidebar group '+').
+     * Null while a session is active — the draft target only exists in draft
+     * mode, so a stale draftGroupId never marks a group after the user moved
+     * on to an existing session.
+     */
+    getDraftGroupId() {
+      return App.state.activeId ? null : draftGroupId;
+    },
+
     startSkillDraft(scope = 'project') {
       App.startNewChat();
       const projectOnly = scope === 'project';
@@ -562,11 +572,21 @@
     setDraftBranchOptions(info, preferredBranch);
   }
 
+  /** Show which custom group the pending draft will land in (group '+' drafts). */
+  function syncDraftGroupChip() {
+    const chip = $('#draft-group-chip');
+    if (!chip) return;
+    const name = draftGroupId ? window.Sidebar?.getGroupName?.(draftGroupId) : null;
+    chip.hidden = !name;
+    if (name) $('#draft-group-value').textContent = name;
+  }
+
   async function prepareDraftContext() {
     const wrap = $('#draft-context');
     if (!wrap || App.state.activeId) return;
     wrap.hidden = false;
     clearDraftContextError();
+    syncDraftGroupChip();
     draftCwd = readRecentCwd();
     draftBranch = null;
     draftGitInfo = null;
