@@ -516,6 +516,13 @@ body {
   margin-top: var(--space-3);
 }
 
+/* Kimi can persist one assistant turn as several adjacent messages while it
+   alternates thinking, tools, and answer text. Keep those chunks visually
+   owned by the same turn instead of applying the unrelated-message gap. */
+#transcript > .msg-assistant-row + .msg-assistant-row {
+  margin-top: var(--space-2);
+}
+
 /* New turn gets extra separation (id specificity needed to beat the rule above) */
 #transcript > .msg-user:not(:first-child) {
   margin-top: var(--space-4);

@@ -1084,6 +1084,7 @@
   // results: tool_call_id -> tool_result map; streaming: session currently busy.
   function fillMessage(row, m, results, streaming) {
     row.innerHTML = '';
+    row.classList.remove('msg-user', 'msg-system', 'msg-assistant-row');
     if (m.role === 'user') {
       row.classList.add('msg-user');
       const text = textOfMessage(m);
@@ -1112,6 +1113,7 @@
     }
     // assistant: one process block (thinking + tool steps, any position) plus
     // the markdown answer text outside it; attachments keep their order.
+    row.classList.add('msg-assistant-row');
     const processParts = [];
     const surface = []; // ordered {kind:'md'|'change'|'attach'} items rendered after the block
     let toolCount = 0;
@@ -1409,7 +1411,7 @@
     let ls = liveStreams.get(key);
     if (ls) return ls;
     clearEmptyState();
-    const row = el('div', 'msg-row msg-live');
+    const row = el('div', 'msg-row msg-live msg-assistant-row');
     const { box, title, meta, body } = buildProcessShell(true);
     box.open = true; // auto-open while the turn runs
     const changeWrap = el('div', 'msg-live-changes');

@@ -175,6 +175,10 @@ depends on color alone.
   It stays full-width inside the 800px transcript column.
 - `.msg-thinking` keeps its v2 spec, which already matches v3: 13px, dim,
   italic, 2px left hairline, 3-line clamp until `.expanded`.
+- Consecutive `.msg-assistant-row` chunks use an 8px gap because Kimi may
+  persist thinking, tool work, and answer text as adjacent messages from one
+  turn. The normal 16px row gap and 24px user-turn gap remain unchanged.
+  A process disclosure uses only 4px before its answer inside the same row.
 - Inline code chips use a border one step stronger than `--border`
   (`rgba(255,255,255,.12)` in dark; light keeps the v1 hairline) so they
   read clearly on both the base and raised surfaces.

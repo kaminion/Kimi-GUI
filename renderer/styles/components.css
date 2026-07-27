@@ -2190,7 +2190,7 @@
    ========================================================================== */
 
 .msg-process {
-  margin-bottom: var(--space-2);
+  margin-bottom: var(--space-1);
   padding-left: 12px;
   border-left: 2px solid var(--border);
   border-radius: var(--radius-s);
