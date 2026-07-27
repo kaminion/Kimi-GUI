@@ -1,4 +1,4 @@
-# Kimi-GUI [![Version](https://img.shields.io/badge/version-0.8.7-blue)](./package.json) [![Commit Activity](https://img.shields.io/github/commit-activity/m/kaminion/Kimi-GUI)](https://github.com/kaminion/Kimi-GUI/graphs/commit-activity) [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey)](#requirements)
+# Kimi-GUI [![Version](https://img.shields.io/badge/version-0.8.8-blue)](./package.json) [![Commit Activity](https://img.shields.io/github/commit-activity/m/kaminion/Kimi-GUI)](https://github.com/kaminion/Kimi-GUI/graphs/commit-activity) [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey)](#requirements)
 
 [Kimi Code](https://www.kimi.com/code/) | [Usage guide](./docs/kimi-code-made-easier.md) | [GitHub](https://github.com/kaminion/Kimi-GUI) | [한국어](./README.ko.md)
 
@@ -136,7 +136,7 @@ Switch engines from Settings. The app restarts into the selected mode and keeps 
 
 ### Unified conversations
 
-Built-in and CLI sessions share one sidebar. Continue compatible sessions, rename or remove conversations, create groups with drag and drop, and search the full transcript with `⌘F` or `Ctrl+F`. Rename a group from the pencil in its header, and start a chat in a group with `+` — the group stays marked until the first send files the conversation there.
+Built-in and CLI sessions share one sidebar. Continue compatible sessions, rename or remove conversations, create groups with drag and drop, and search the full transcript with `⌘F` or `Ctrl+F`. Long histories open at the newest page and older messages scroll in as you reach the top. Rename a group from the pencil in its header, and start a chat in a group with `+` — the group stays marked until the first send files the conversation there.
 
 ### Controls next to the prompt
 

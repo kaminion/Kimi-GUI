@@ -1,6 +1,6 @@
 # Kimi-GUI
 
-![version](https://img.shields.io/badge/version-0.8.7-blue)
+![version](https://img.shields.io/badge/version-0.8.8-blue)
 ![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey)
 ![Electron](https://img.shields.io/badge/Electron-43-47848F?logo=electron&logoColor=white)
 ![made with](https://img.shields.io/badge/made%20with-vanilla%20JS%20%28no%20bundler%29-yellow)
@@ -109,7 +109,7 @@ Skills가 자동완성 목록에 표시됩니다. 방향키로 이동하고 `Tab
 
 ### 통합된 대화
 
-CLI 시절의 세션이 내장 엔진 세션과 나란히 하나의 사이드바에 표시됩니다 — 열기, 이어하기, 이름 변경, 삭제 모두 가능합니다. 커스텀 그룹을 만들어 드래그 앤 드롭으로 세션을 정리할 수 있고, 그룹에 속하지 않은 세션은 최근 내역에 남습니다. 그룹 헤더의 연필 버튼으로 그룹 이름을 바꾸고, `+` 버튼으로 그룹 안에서 새 대화를 시작할 수 있습니다 — 첫 전송으로 대화가 그룹에 배정될 때까지 대상 그룹이 표시됩니다. ⌘F(Windows: Ctrl+F)로 전체 세션을 대상으로 전문 검색을 수행하고, 결과를 클릭하면 해당 메시지 위치로 이동합니다.
+CLI 시절의 세션이 내장 엔진 세션과 나란히 하나의 사이드바에 표시됩니다 — 열기, 이어하기, 이름 변경, 삭제 모두 가능합니다. 커스텀 그룹을 만들어 드래그 앤 드롭으로 세션을 정리할 수 있고, 그룹에 속하지 않은 세션은 최근 내역에 남습니다. 그룹 헤더의 연필 버튼으로 그룹 이름을 바꾸고, `+` 버튼으로 그룹 안에서 새 대화를 시작할 수 있습니다 — 첫 전송으로 대화가 그룹에 배정될 때까지 대상 그룹이 표시됩니다. 긴 대화는 최신 페이지부터 열리고, 맨 위로 스크롤하면 이전 메시지가 이어서 로드됩니다. ⌘F(Windows: Ctrl+F)로 전체 세션을 대상으로 전문 검색을 수행하고, 결과를 클릭하면 해당 메시지 위치로 이동합니다.
 
 ### 파일 변경 검토와 에이전트 작업 패널
 
