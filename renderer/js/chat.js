@@ -1185,6 +1185,7 @@
     row.dataset.messageId = m.id;
     fillMessage(row, m, collectResults(), busy);
     transcriptEl.append(row);
+    reappendScheduledCards(); // scheduled cards stay bottom-most
     return row;
   }
 
@@ -1420,6 +1421,7 @@
     textWrap.append(textMd);
     row.append(box, changeWrap, textWrap);
     transcriptEl.append(row);
+    reappendScheduledCards(); // the live 'working' row never covers the cards
     ls = {
       row, block: box, titleEl: title, metaEl: meta, bodyEl: body, changeWrap,
       textMd, thinking: '', thinkMd: null, text: '',
@@ -1800,6 +1802,7 @@
     const row = el('div', 'msg-row msg-user msg-optimistic');
     row.append(el('div', 'msg-user-text', text));
     transcriptEl.append(row);
+    reappendScheduledCards(); // scheduled cards stay bottom-most
     optimisticUser = { text, el: row };
     scrollToBottom();
   }
@@ -2132,6 +2135,10 @@
 
   // Cards and running echoes ride at the transcript's bottom; re-append them
   // after any rebuild (their nodes keep listeners across innerHTML wipes).
+  // INVARIANT: scheduled cards are ALWAYS the last transcript rows — every
+  // append site below (live 'working' rows, optimistic user echoes, system
+  // notes, late message rows) calls this right after appending so a busy
+  // turn can never push a scheduled message up.
   function reappendScheduledCards() {
     if (!transcriptEl) return;
     for (const echo of consumedEchoes) transcriptEl.append(echo.el);
@@ -2239,6 +2246,7 @@
     const row = el('div', 'msg-row msg-system');
     row.append(el('div', 'msg-system-text', text));
     transcriptEl.append(row);
+    reappendScheduledCards(); // scheduled cards stay bottom-most
     maybeScroll();
   }
 
