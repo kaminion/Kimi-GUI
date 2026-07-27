@@ -10,7 +10,8 @@
  *  - a kimi:changes-updated snapshot shows the pill with '파일 N개 변경됨' and
  *    +A/-D stats; a zero-change snapshot hides it again;
  *  - clicking the pill opens a .changes-popover (shared .model-dropdown
- *    chrome) listing each file with a shortened path + per-file stats;
+ *    chrome) headed by a summary row with the same totals, then each file
+ *    with a shortened path + per-file stats;
  *  - clicking a file row closes the popover and opens the panel on the
  *    Changes tab with that file selected;
  *  - Escape and outside mousedown close the popover;
@@ -213,6 +214,13 @@ test('pill click opens a popover listing files with shortened paths and stats', 
   assert.match(pop.className, /model-dropdown changes-popover/);
   assert.equal(pill.attributes['aria-expanded'], 'true');
 
+  // Summary header repeats the pill's totals above the file list.
+  const summary = pop.findAll((n) => n.className === 'changes-popover-summary');
+  assert.equal(summary.length, 1);
+  assert.match(summary[0].text(), /파일 2개 변경됨/);
+  assert.match(summary[0].text(), /\+10/);
+  assert.match(summary[0].text(), /-3/);
+
   const rows = pop.findAll((n) => n.className.includes('changes-popover-file'));
   assert.equal(rows.length, 2);
   assert.match(rows[0].text(), /src\/a\.js/);
@@ -273,6 +281,11 @@ test('a live snapshot update refills an open popover, or closes it when empty', 
   const rows = w.popover().findAll((n) => n.className.includes('changes-popover-file'));
   assert.equal(rows.length, 1);
   assert.match(rows[0].text(), /src\/a\.js/);
+  // …and the summary header follows the new totals.
+  const summary = w.popover().findAll((n) => n.className === 'changes-popover-summary');
+  assert.equal(summary.length, 1);
+  assert.match(summary[0].text(), /파일 1개 변경됨/);
+  assert.match(summary[0].text(), /\+7/);
 
   // Everything committed: the popover closes with the pill hidden.
   w.dispatchSnapshot(snapshot(0, []));

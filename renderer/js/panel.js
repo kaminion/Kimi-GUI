@@ -439,7 +439,20 @@
   function fillPopover(st) {
     if (!popover) return;
     popover.textContent = '';
-    const files = Array.isArray(st?.changes?.files) ? st.changes.files : [];
+    const snapshot = st?.changes;
+    const files = Array.isArray(snapshot?.files) ? snapshot.files : [];
+    // Summary header: the pill's totals ('파일 N개 변경됨', +A/-D) repeated at
+    // the top of the popup, so the file list never loses the overall count.
+    if (snapshot && snapshot.fileCount > 0) {
+      const summary = el('div', 'changes-popover-summary');
+      summary.append(
+        el('span', 'changes-popover-summary-label', filesChangedText(snapshot.fileCount)),
+      );
+      const stats = el('span', 'changes-popover-stats');
+      appendChangeStats(stats, snapshot.additions, snapshot.deletions);
+      summary.append(stats);
+      popover.append(summary);
+    }
     for (const file of files) {
       const row = el('button', 'model-dropdown-item changes-popover-file');
       row.type = 'button';
