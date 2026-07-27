@@ -1,4 +1,4 @@
-# Kimi-GUI [![Version](https://img.shields.io/badge/version-0.8.5-blue)](./package.json) [![Commit Activity](https://img.shields.io/github/commit-activity/m/kaminion/Kimi-GUI)](https://github.com/kaminion/Kimi-GUI/graphs/commit-activity) [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey)](#requirements)
+# Kimi-GUI [![Version](https://img.shields.io/badge/version-0.8.6-blue)](./package.json) [![Commit Activity](https://img.shields.io/github/commit-activity/m/kaminion/Kimi-GUI)](https://github.com/kaminion/Kimi-GUI/graphs/commit-activity) [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey)](#requirements)
 
 [Kimi Code](https://www.kimi.com/code/) | [Usage guide](./docs/kimi-code-made-easier.md) | [GitHub](https://github.com/kaminion/Kimi-GUI) | [한국어](./README.ko.md)
 
@@ -64,9 +64,10 @@ Also cover computers where no Kimi server is already running.
 ### Review what changed
 
 The changed-files pill in the prompt options reports file, added-line, and
-deleted-line totals. Select it to choose a file from the popover and open the
-**Changes** tab, then switch to **Activity** in the same right-side panel when
-you want the execution history.
+deleted-line totals. Select it to open the popover, which leads with the same
+totals above the per-file rows, then choose a file to open the **Changes**
+tab. Switch to **Activity** in the same right-side panel when you want the
+execution history.
 
 ### Manage Skills and CLI commands
 

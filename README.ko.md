@@ -1,6 +1,6 @@
 # Kimi-GUI
 
-![version](https://img.shields.io/badge/version-0.8.5-blue)
+![version](https://img.shields.io/badge/version-0.8.6-blue)
 ![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey)
 ![Electron](https://img.shields.io/badge/Electron-43-47848F?logo=electron&logoColor=white)
 ![made with](https://img.shields.io/badge/made%20with-vanilla%20JS%20%28no%20bundler%29-yellow)
@@ -70,7 +70,8 @@ Kimi 서버가 미리 실행되지 않은 컴퓨터도 함께 처리하세요.
 ```
 
 작업이 끝나면 입력창 옵션의 변경 파일 pill에서 파일 수와 추가·삭제 줄 수를
-확인합니다. pill을 눌러 파일을 고르면 우측 **변경사항** 탭에서 diff를
+확인합니다. pill을 눌러 열리는 팝오버 상단에도 같은 합계가 표시되고,
+아래 파일 목록에서 파일을 고르면 우측 **변경사항** 탭에서 diff를
 검토할 수 있고, 같은 패널의 **작업** 탭에서 실행 기록을 확인할 수 있습니다.
 
 두 엔진과 전체 작업 흐름은 [사용 가이드](docs/kimi-code-made-easier.md)에서
