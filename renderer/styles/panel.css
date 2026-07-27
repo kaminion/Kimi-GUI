@@ -256,6 +256,28 @@
   color: var(--text-dim);
 }
 
+/* Task-list loading skeleton: same pulse as the sidebar/transcript skeletons,
+   row height of a real .panel-task so the swap does not shift layout. */
+.panel-tasks-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 3px 0;
+  pointer-events: none;
+}
+
+.panel-tasks-skeleton-row {
+  display: block;
+  height: 12px;
+  background: var(--active-bg);
+  border-radius: var(--radius-s);
+  animation: loading-skeleton-pulse 1.35s var(--ease-in-out) infinite;
+}
+
+.panel-tasks-skeleton-row.line-1 { width: 82%; }
+.panel-tasks-skeleton-row.line-2 { width: 64%; animation-delay: 80ms; }
+.panel-tasks-skeleton-row.line-3 { width: 73%; animation-delay: 160ms; }
+
 /* ---- recent tool activity (#panel-activity) ---- */
 .panel-act-list {
   display: flex;

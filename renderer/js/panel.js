@@ -279,6 +279,20 @@
   function renderTasks(st) {
     if (!els.tasks) return;
     els.tasks.textContent = '';
+    // st.tasks === null while the first task-list fetch is in flight mid-run:
+    // keep the section alive with skeleton rows instead of hiding it.
+    if (st.tasks == null && st.busy && canListTasks()) {
+      els.tasks.hidden = false;
+      els.tasks.appendChild(sectionLabel(T('panel.section_tasks', '작업')));
+      const skeleton = el('div', 'panel-tasks-skeleton');
+      skeleton.setAttribute('role', 'status');
+      skeleton.setAttribute('aria-label', T('common.loading', '불러오는 중…'));
+      for (let i = 0; i < 3; i += 1) {
+        skeleton.append(el('span', 'panel-tasks-skeleton-row line-' + (i + 1)));
+      }
+      els.tasks.appendChild(skeleton);
+      return;
+    }
     const items = st.tasks || [];
     if (!items.length) { els.tasks.hidden = true; return; }
     els.tasks.hidden = false;
