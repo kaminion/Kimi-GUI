@@ -883,6 +883,32 @@
     scheduleChangeFilter(snapshot);
   }
 
+  // ---- live-turn watchdog ---------------------------------------------------
+  // Event loss (WS drop, daemon hiccup, missed subscription) leaves a turn
+  // invisible: no live row, no updates until the next session switch. After a
+  // send, resync from REST when the turn produces no live activity.
+  let liveWatchdogTimer = null;
+  let liveWatchdogRetries = 0;
+
+  function disarmLiveWatchdog() {
+    if (liveWatchdogTimer) {
+      clearTimeout(liveWatchdogTimer);
+      liveWatchdogTimer = null;
+    }
+  }
+
+  function armLiveWatchdog() {
+    disarmLiveWatchdog();
+    liveWatchdogRetries = 0;
+    const check = () => {
+      liveWatchdogTimer = null;
+      if (!busy || liveStreams.size) return; // live events are flowing
+      scheduleReload();
+      if (++liveWatchdogRetries < 3) liveWatchdogTimer = setTimeout(check, 5000);
+    };
+    liveWatchdogTimer = setTimeout(check, 2500);
+  }
+
   // Expanded tool row body: formatted blocks (built with textContent only, so
   // tool output can never inject markup), never a raw JSON dump for known
   // tools. Unknown tools keep a pretty-printed input for debuggability.
@@ -1487,6 +1513,7 @@
       userToggled: false, settled: false,
     };
     liveStreams.set(key, ls);
+    disarmLiveWatchdog(); // live events are flowing — no resync needed
     updateLiveHeader(ls);
     return ls;
   }
@@ -2335,6 +2362,7 @@
     updateSendBtn();
     appendOptimisticUser(text);
     setBusy(true); // switches the send button to STOP until the server is idle
+    armLiveWatchdog(); // resync from REST if no live activity follows
     Promise.resolve()
       .then(() => app.sendPrompt(text))
       .then((result) => {
@@ -2442,6 +2470,7 @@
     }
     slashAutocomplete?.refresh?.();
     if (reloadTimer) { clearTimeout(reloadTimer); reloadTimer = null; }
+    disarmLiveWatchdog();
     historyHasMore = !!page?.hasMore;
     historyLoadingOlder = false;
     olderSkeleton = null;
@@ -2492,6 +2521,7 @@
     historyLoadingOlder = false;
     olderSkeleton = null;
     if (reloadTimer) { clearTimeout(reloadTimer); reloadTimer = null; }
+    disarmLiveWatchdog();
     if (highlightTimer) { clearTimeout(highlightTimer); highlightTimer = null; }
     clearHistoryLoading();
     if (initialized) {
@@ -2550,6 +2580,8 @@
     scrollToMessage,
     setComposerText,
     getChangeSummary: () => currentChangeSnapshot,
+    // Re-verify committed files against Git (popover opens, explicit refresh).
+    refreshChangeFilter: () => void refreshChangeFilter(),
   };
 
   // app.js may load after us; init as soon as the DOM is usable either way.

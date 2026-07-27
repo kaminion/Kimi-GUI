@@ -486,6 +486,9 @@
     if (popover) { closePopover(true); return; }
     const st = activeId ? sessions.get(activeId) : null;
     if (!st?.changes?.files?.length) return;
+    // Re-verify against Git first: files committed since the last snapshot
+    // drop out (the pill may vanish, leaving nothing to show).
+    void window.Chat?.refreshChangeFilter?.();
     popover = el('div', 'model-dropdown changes-popover');
     popover.setAttribute('role', 'menu');
     popover.setAttribute('aria-label', T('changes.open_review', '변경사항 검토 열기'));
