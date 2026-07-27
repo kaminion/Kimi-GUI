@@ -11,10 +11,10 @@ const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'u
 test('group headers render a hover rename button wired to the inline name edit', () => {
   const sidebar = read('renderer/js/sidebar.js');
 
-  // The pencil sits between the '+' and the '×' and reuses pencilSvg().
+  // The pencil rides in the hover action wrapper between '+' and '×'.
   assert.match(sidebar, /el\('button', 'custom-group-rename'\)/);
   assert.match(sidebar, /rename\.innerHTML = pencilSvg\(\)/);
-  assert.match(sidebar, /header\.append\(count, add, rename, del\)/);
+  assert.match(sidebar, /actions\.append\(add, rename, del\)/);
 
   // Clicking it enters the same inline edit as double-clicking the name.
   assert.match(
@@ -23,13 +23,17 @@ test('group headers render a hover rename button wired to the inline name edit',
   );
 });
 
-test('group rename button shares the hover reveal and hover chrome', () => {
+test('group action buttons share one size and the hover swap', () => {
   const css = read('renderer/styles/layout.css');
 
-  assert.match(css, /\.custom-group-label:hover \.custom-group-rename/);
-  assert.match(css, /\.custom-group-rename:focus-visible/);
-  assert.match(css, /\.custom-group-rename\s*\{[^}]*opacity: 0/s);
+  // Wrapper revealed on hover / keyboard focus; the count hides instead.
+  assert.match(css, /\.custom-group-actions \{[^}]*display: none;/s);
+  assert.match(css, /\.custom-group-label:hover \.custom-group-actions,\s*\.custom-group-actions:focus-within \{\s*display: inline-flex;\s*\}/);
+
+  // One uniform button geometry (no per-button font-size drift).
+  assert.match(css, /\.custom-group-delete,\s*\.custom-group-new-chat,\s*\.custom-group-rename \{[^}]*width: 18px;[^}]*height: 18px;[^}]*font-size: 13px;/s);
   assert.match(css, /\.custom-group-new-chat:hover,\s*\.custom-group-rename:hover/);
+  assert.equal(/\.custom-group-new-chat \{\s*font-size/.test(css), false);
 });
 
 test('group rename button reuses the localized rename label', () => {

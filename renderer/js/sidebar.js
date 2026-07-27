@@ -694,6 +694,9 @@
     }
 
     const count = el('span', 'session-group-count', String(itemCount));
+    // Hover actions ride in one wrapper: by default the count is the
+    // rightmost element; on hover the count hides and the buttons replace it.
+    const actions = el('span', 'custom-group-actions');
     const add = el('button', 'custom-group-new-chat', '+');
     add.type = 'button';
     add.title = T('sidebar.group_new_chat_title', '이 그룹에서 새 대화');
@@ -724,14 +727,15 @@
       editingGroupId = group.id;
       rerender();
     });
-    header.append(count, add, rename, del);
+    actions.append(add, rename, del);
+    header.append(count, actions);
 
     // Group '+' starts a draft that lands in THIS group on first send: mark
     // the target while the draft is pending so the destination is visible.
     if (window.App?.getDraftGroupId?.() === group.id) {
       header.insertBefore(
         el('span', 'custom-group-draft-badge', T('sidebar.group_draft_badge', '새 대화')),
-        add,
+        count,
       );
     }
 

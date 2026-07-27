@@ -668,8 +668,25 @@ body {
   margin-top: var(--space-2);
 }
 
-/* Group hover actions ('+' new chat, pencil rename, '×' delete): appear on
-   header hover. */
+/* Group hover actions ('+' new chat, pencil rename, '×' delete): the count
+   is the rightmost element by default; on hover (or keyboard focus inside)
+   the count hides and the action wrapper takes its place. */
+.custom-group-actions {
+  display: none;
+  flex: none;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.custom-group-label:hover .custom-group-actions,
+.custom-group-actions:focus-within {
+  display: inline-flex;
+}
+
+.custom-group-label:hover > .session-group-count {
+  display: none;
+}
+
 .custom-group-delete,
 .custom-group-new-chat,
 .custom-group-rename {
@@ -679,35 +696,15 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1;
   color: var(--text-dim);
   border-radius: var(--radius-s);
-  opacity: 0;
 }
 
-.custom-group-new-chat {
-  font-size: 13px;
-}
-
-/* The pencil glyph reads better a touch larger than its 11px artwork. */
-.custom-group-rename > svg {
-  flex: none;
-}
-
-/* The label's 4px flex gap alone put the destructive '×' one misclick away
-   from '+'; double the gap between the two action buttons. */
+/* The destructive '×' keeps a misclick buffer from the rename pencil. */
 .custom-group-delete {
   margin-left: var(--space-1);
-}
-
-.custom-group-label:hover .custom-group-delete,
-.custom-group-label:hover .custom-group-new-chat,
-.custom-group-label:hover .custom-group-rename,
-.custom-group-delete:focus-visible,
-.custom-group-new-chat:focus-visible,
-.custom-group-rename:focus-visible {
-  opacity: 1;
 }
 
 .custom-group-delete:hover {

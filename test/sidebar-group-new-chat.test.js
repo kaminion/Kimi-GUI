@@ -61,19 +61,21 @@ test('group headers render a hover new-chat button wired to a grouped draft', ()
   const app = read('renderer/js/app.js');
   const css = read('renderer/styles/layout.css');
 
-  // The '+' sits next to the delete '×' and starts a draft bound to the group.
+  // The '+' rides in the hover action wrapper and starts a draft bound to
+  // the group.
   assert.match(sidebar, /el\('button', 'custom-group-new-chat', '\+'\)/);
   assert.match(sidebar, /window\.App\?\.startNewChat\?\.\(\{ groupId: group\.id \}\)/);
-  assert.match(sidebar, /header\.append\(count, add, rename, del\)/);
+  assert.match(sidebar, /actions\.append\(add, rename, del\)/);
+  assert.match(sidebar, /header\.append\(count, actions\)/);
 
   // app.js carries the group through draft mode into the lazy create.
   assert.match(app, /startNewChat\(options\)/);
   assert.match(app, /draftGroupId = options\?\.groupId \|\| null/);
   assert.match(app, /window\.Sidebar\?\.assignSession\?\.\(session\.id, draftGroupId\)/);
 
-  // Same hover reveal as the existing delete action.
-  assert.match(css, /\.custom-group-label:hover \.custom-group-new-chat/);
-  assert.match(css, /\.custom-group-new-chat:focus-visible/);
+  // Hover swaps the count for the action wrapper.
+  assert.match(css, /\.custom-group-label:hover \.custom-group-actions/);
+  assert.match(css, /\.custom-group-label:hover > \.session-group-count \{\s*display: none;\s*\}/);
 });
 
 test('group new-chat title is localized in Korean and English', () => {
