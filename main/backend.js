@@ -97,6 +97,36 @@ let settingsFile = null;
 let currentEngine = 'direct';
 let initialized = false;
 
+/* ---- locally-deleted session ids ------------------------------------------
+ * The daemon refuses :archive for a session whose workspace dir is gone
+ * (40409 — observed after a daemon restart), which used to leave such a
+ * session undeletable forever. When the daemon call fails we hide the id
+ * locally instead; listSessions always filters this set. Persisted next to
+ * settings.json so restarts keep the sessions gone. */
+let deletedIdsFile = null;
+let deletedIds = null;
+
+function readDeletedIds() {
+  if (deletedIds) return deletedIds;
+  deletedIds = new Set();
+  try {
+    const raw = fs.readFileSync(deletedIdsFile, 'utf8');
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) for (const id of parsed) deletedIds.add(String(id));
+  } catch { /* missing/corrupt file starts empty */ }
+  return deletedIds;
+}
+
+function hideSessionId(sessionId) {
+  const set = readDeletedIds();
+  set.add(String(sessionId));
+  try {
+    fs.writeFileSync(deletedIdsFile, JSON.stringify([...set]));
+  } catch (err) {
+    console.warn(`[backend] could not persist deleted-sessions: ${err.message}`);
+  }
+}
+
 // cli engine state (a single KimiClient, like v1/v2 main.js held).
 const cli = {
   client: null,
@@ -346,6 +376,7 @@ async function init({ app, send } = {}) {
   appRef = app;
   sendRef = typeof send === 'function' ? send : () => {};
   settingsFile = path.join(app.getPath('userData'), 'settings.json');
+  deletedIdsFile = path.join(app.getPath('userData'), 'deleted-sessions.json');
   const settings = readSettings();
   currentEngine = settings.engine === 'cli' ? 'cli' : 'direct';
   initialized = true;
@@ -845,7 +876,7 @@ async function listSessions() {
   if (currentEngine === 'cli') {
     const items = await requireCli().listSessions();
     const cliItems = (Array.isArray(items) ? items : [])
-      .filter((s) => s && typeof s.id === 'string' && !s.archived)
+      .filter((s) => s && typeof s.id === 'string' && !s.archived && !readDeletedIds().has(s.id))
       .map(normalizeCliSession);
     // V5: direct-store sessions merge into the cli list too (dedupe by id,
     // direct wins; combined list sorted newest-first) so switching engines
@@ -1718,11 +1749,25 @@ async function deleteSession(sessionId) {
       abortDirectTurn(sessionId);
       return Promise.resolve(resolved.store.remove(sessionId));
     }
-    const client = requireCli();
-    try { client.unsubscribeSession(sessionId); } catch { /* ignore */ }
     // Soft-delete: POST /sessions/{id}:archive (verified live); the list
     // filter already hides archived sessions.
-    return client.archiveSession(sessionId);
+    try {
+      const client = requireCli();
+      try { client.unsubscribeSession(sessionId); } catch { /* ignore */ }
+      return await client.archiveSession(sessionId);
+    } catch (err) {
+      // The daemon refuses sessions whose workspace dir vanished (40409,
+      // observed after a daemon restart) and is unreachable while down. Hide
+      // the id locally so a broken session is always deletable; the CLI-tree
+      // marker is a best-effort nicety for other clients.
+      console.warn(`[backend] daemon archive failed for ${sessionId}, hiding locally: ${err.message}`);
+      const cliSessions = loadCliSessions();
+      if (cliSessions && typeof cliSessions.archive === 'function') {
+        try { await cliSessions.archive(sessionId); } catch { /* unknown id */ }
+      }
+      hideSessionId(sessionId);
+      return { archived: true, local: true };
+    }
   }
   const d = requireDirect();
   await abort(sessionId); // no-op when idle
