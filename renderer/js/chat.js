@@ -49,8 +49,9 @@
  * <details class="msg-process"> ("사고 과정") holding the thinking content and
  * the v6 tool rows in chronological order, followed by the markdown answer.
  * While the turn runs the header shows a spinner + live activity ('생각하는
- * 중…' / '<Tool> 실행 중…' / '작업하는 중…') and the block auto-opens; at turn
- * end it auto-closes unless the user took control of the disclosure. Live
+ * 중…' / '<Tool> 실행 중…' / '작업하는 중…'); the block stays COLLAPSED by
+ * default (the header alone carries the activity) and opens only on user
+ * demand — user toggles are respected for the rest of the turn. Live
  * turns (id-less turnId deltas + tool.call.started/tool.result frames) update
  * the same block in real time; turn.ended still triggers the authoritative
  * REST resync. Machine-only context appends (origin.kind injection /
@@ -1070,8 +1071,9 @@
     return T('chat.process.working', '작업하는 중…');
   }
 
-  // History/id-stream block: open while running (unless the user closed it),
-  // collapsed when done (unless the user opened it) — processIntent rules.
+  // History/id-stream block: collapsed by default, running or done — only a
+  // recorded user open (processIntent) expands it. The header alone carries
+  // the live activity while running.
   function buildProcessBlock(parts, results, running, msgId, toolCount) {
     const { box, title, meta, action, body } = buildProcessShell(running);
     for (const p of parts) {
@@ -1084,11 +1086,10 @@
     }
     if (running) {
       title.textContent = processActivityText(parts, results);
-      box.open = processIntent.get(msgId) !== 'closed';
     } else {
       setProcessHeaderDone(title, meta, toolCount ?? processToolCount(parts));
-      box.open = processIntent.get(msgId) === 'open';
     }
+    box.open = processIntent.get(msgId) === 'open';
     updateProcessAction(box, action);
     return box;
   }
@@ -1497,7 +1498,7 @@
     clearEmptyState();
     const row = el('div', 'msg-row msg-live msg-assistant-row');
     const { box, title, meta, body } = buildProcessShell(true);
-    box.open = true; // auto-open while the turn runs
+    box.open = false; // collapsed by default — the header alone carries the live activity
     const changeWrap = el('div', 'msg-live-changes');
     const textWrap = el('div', 'msg-assistant');
     const textMd = el('div', 'md');
@@ -1547,7 +1548,7 @@
     if (!ls.settled) {
       ls.activity = 'working';
       updateLiveHeader(ls);
-      if (!ls.userToggled) setLiveOpen(ls, true);
+      // No auto-open: the block stays collapsed unless the user expanded it.
     }
     maybeScroll();
   }

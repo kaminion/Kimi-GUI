@@ -200,11 +200,11 @@ test('turn.started opens a live process row immediately; deltas stream into it',
   const live = transcript.querySelector('.msg-live');
   assert.ok(live, 'live row exists right after turn.started');
   assert.ok(live.querySelector('.msg-process'), 'process block present');
-  assert.equal(live.querySelector('.msg-process').open, true, 'block streams open while running');
+  assert.equal(live.querySelector('.msg-process').open, false, 'block starts collapsed (header carries the activity)');
 
   Chat.applyEvent('s1', { type: 'thinking.delta', turn_id: 't1', delta: '구조를 분석하는 중…' });
   const thinking = live.querySelector('.msg-process-thinking');
-  assert.ok(thinking, 'thinking prose streams into the open block');
+  assert.ok(thinking, 'thinking prose still streams into the block while collapsed');
 
   Chat.applyEvent('s1', { type: 'assistant.delta', turn_id: 't1', delta: '답변 초안' });
   assert.ok(live.querySelector('.msg-assistant'), 'answer area present');
