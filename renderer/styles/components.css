@@ -2210,7 +2210,9 @@
 
 .msg-process[open] > .msg-process-header {
   position: sticky;
-  top: var(--space-2);
+  /* Flush to the scrollport top: an offset let long thinking scroll by in a
+     visible strip above the floating header. */
+  top: 0;
   z-index: 3;
   margin-left: -10px;
   margin-right: -4px;
