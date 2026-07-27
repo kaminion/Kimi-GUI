@@ -670,12 +670,15 @@ body {
 
 /* Group hover actions ('+' new chat, pencil rename, '×' delete): the count
    is the rightmost element by default; on hover (or keyboard focus inside)
-   the count hides and the action wrapper takes its place. */
+   the count hides and the action wrapper takes its place. The wrapper keeps
+   its own margin-left:auto so the buttons stay pinned to the right edge
+   once the count (the usual auto-margin carrier) is hidden. */
 .custom-group-actions {
   display: none;
   flex: none;
   align-items: center;
   gap: var(--space-1);
+  margin-left: auto;
 }
 
 .custom-group-label:hover .custom-group-actions,

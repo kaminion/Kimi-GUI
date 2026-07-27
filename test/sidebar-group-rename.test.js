@@ -29,6 +29,8 @@ test('group action buttons share one size and the hover swap', () => {
   // Wrapper revealed on hover / keyboard focus; the count hides instead.
   assert.match(css, /\.custom-group-actions \{[^}]*display: none;/s);
   assert.match(css, /\.custom-group-label:hover \.custom-group-actions,\s*\.custom-group-actions:focus-within \{\s*display: inline-flex;\s*\}/);
+  // …and the wrapper pins itself to the right edge without the count.
+  assert.match(css, /\.custom-group-actions \{[^}]*margin-left: auto;/s);
 
   // One uniform button geometry (no per-button font-size drift).
   assert.match(css, /\.custom-group-delete,\s*\.custom-group-new-chat,\s*\.custom-group-rename \{[^}]*width: 18px;[^}]*height: 18px;[^}]*font-size: 13px;/s);
