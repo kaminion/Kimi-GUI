@@ -646,9 +646,11 @@ body {
   margin-top: var(--space-2);
 }
 
-/* Group hover actions ('+' new chat, '×' delete): appear on header hover. */
+/* Group hover actions ('+' new chat, pencil rename, '×' delete): appear on
+   header hover. */
 .custom-group-delete,
-.custom-group-new-chat {
+.custom-group-new-chat,
+.custom-group-rename {
   flex: none;
   width: 18px;
   height: 18px;
@@ -666,6 +668,11 @@ body {
   font-size: 13px;
 }
 
+/* The pencil glyph reads better a touch larger than its 11px artwork. */
+.custom-group-rename > svg {
+  flex: none;
+}
+
 /* The label's 4px flex gap alone put the destructive '×' one misclick away
    from '+'; double the gap between the two action buttons. */
 .custom-group-delete {
@@ -674,8 +681,10 @@ body {
 
 .custom-group-label:hover .custom-group-delete,
 .custom-group-label:hover .custom-group-new-chat,
+.custom-group-label:hover .custom-group-rename,
 .custom-group-delete:focus-visible,
-.custom-group-new-chat:focus-visible {
+.custom-group-new-chat:focus-visible,
+.custom-group-rename:focus-visible {
   opacity: 1;
 }
 
@@ -684,7 +693,8 @@ body {
   color: var(--danger);
 }
 
-.custom-group-new-chat:hover {
+.custom-group-new-chat:hover,
+.custom-group-rename:hover {
   background: var(--hover-bg);
   color: var(--text);
 }

@@ -64,7 +64,7 @@ test('group headers render a hover new-chat button wired to a grouped draft', ()
   // The '+' sits next to the delete '×' and starts a draft bound to the group.
   assert.match(sidebar, /el\('button', 'custom-group-new-chat', '\+'\)/);
   assert.match(sidebar, /window\.App\?\.startNewChat\?\.\(\{ groupId: group\.id \}\)/);
-  assert.match(sidebar, /header\.append\(count, add, del\)/);
+  assert.match(sidebar, /header\.append\(count, add, rename, del\)/);
 
   // app.js carries the group through draft mode into the lazy create.
   assert.match(app, /startNewChat\(options\)/);

@@ -13,7 +13,8 @@
  * v3 (CONTRACT-V3 R1, kept):
  * - Custom groups pinned ABOVE the recent section: '그룹' header row + '+'
  *   add button (inline-editable '새 그룹' row), collapsible, rename by
- *   double-click, delete by hover '×' (confirm modal; sessions return to
+ *   double-click or the hover pencil, delete by hover '×' (confirm modal;
+ *   sessions return to
  *   the recent section), new-chat-in-group by hover '+' (draft mode via
  *   App.startNewChat({ groupId }); the assignment lands when the first
  *   send lazily creates the session). While that group draft is pending,
@@ -711,7 +712,19 @@
       e.stopPropagation();
       requestGroupDelete(group);
     });
-    header.append(count, add, del);
+    // Explicit rename affordance: double-click still works, but the hover
+    // pencil makes the inline name edit discoverable.
+    const rename = el('button', 'custom-group-rename');
+    rename.type = 'button';
+    rename.innerHTML = pencilSvg();
+    rename.title = T('sidebar.group_rename_aria', '그룹 이름 변경');
+    rename.setAttribute('aria-label', T('sidebar.group_rename_aria', '그룹 이름 변경'));
+    rename.addEventListener('click', (e) => {
+      e.stopPropagation();
+      editingGroupId = group.id;
+      rerender();
+    });
+    header.append(count, add, rename, del);
 
     // Group '+' starts a draft that lands in THIS group on first send: mark
     // the target while the draft is pending so the destination is visible.
