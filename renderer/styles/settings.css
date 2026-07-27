@@ -360,6 +360,64 @@
   white-space: nowrap;
 }
 
+.skills-library-tools {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.skills-search-input {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  padding: 0 10px;
+  color: var(--text);
+  background: var(--bg-secondary);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius-m);
+  outline: none;
+  font: inherit;
+  font-size: 12px;
+}
+
+.skills-search-input::placeholder {
+  color: var(--text-dim);
+}
+
+.skills-search-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.skills-refresh {
+  flex: none;
+  white-space: nowrap;
+}
+
+.skills-results-summary {
+  min-height: 18px;
+  margin-bottom: 2px;
+  color: var(--text-dim);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.skills-search-empty {
+  margin-top: var(--space-2);
+}
+
+@media (max-width: 640px) {
+  .skills-library-tools {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .skills-refresh {
+    width: 100%;
+  }
+}
+
 .skills-notice,
 .skills-error {
   margin-bottom: var(--space-2);

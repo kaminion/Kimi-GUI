@@ -55,3 +55,20 @@ test('Each Skill row shows an explicit enabled/disabled state badge', () => {
   assert.match(i18n, /'settings\.skills\.enabled': '활성'/);
   assert.match(i18n, /'settings\.skills\.disabled': '비활성'/);
 });
+
+test('Skills can be searched locally and discovery folders can be refreshed', () => {
+  const html = read('renderer/index.html');
+  const settings = read('renderer/js/settings.js');
+  const css = read('renderer/styles/settings.css');
+  const i18n = read('renderer/js/i18n.js');
+
+  assert.match(html, /<script src="js\/skill-filter\.js"><\/script>/);
+  assert.match(settings, /search\.type = 'search'/);
+  assert.match(settings, /window\.SkillFilter\.filterSkills\(list, skillSearchQuery\)/);
+  assert.match(settings, /startSkillsLoad\(cwd, \{\s*busyId: 'refresh'/);
+  assert.match(settings, /successNotice: T\(\s*'settings\.skills\.refreshed_notice'/);
+  assert.match(css, /\.skills-library-tools \{/);
+  assert.match(css, /\.skills-search-input:focus \{/);
+  assert.match(i18n, /'settings\.skills\.refresh': '설치 폴더 새로고침'/);
+  assert.match(i18n, /'settings\.skills\.search_placeholder': '이름, 설명 또는 경로 검색'/);
+});

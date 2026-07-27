@@ -45,6 +45,7 @@
   let cliInstall = null;      // { running, line } while onboardingInstallCli runs
   let skillsState = null;     // { cwd, loading, data?, error?, busyId?, notice? }
   let skillInstallScope = null;
+  let skillSearchQuery = '';
 
   function el(tag, className, text) {
     const n = document.createElement(tag);
@@ -650,7 +651,14 @@
     return family ? family.charAt(0).toUpperCase() + family.slice(1) : '';
   }
 
-  function startSkillsLoad(cwd, { keepNotice = false } = {}) {
+  function startSkillsLoad(
+    cwd,
+    {
+      keepNotice = false,
+      busyId = null,
+      successNotice = null,
+    } = {},
+  ) {
     if (typeof window.kimi?.skillsList !== 'function') {
       skillsState = {
         cwd,
@@ -661,10 +669,17 @@
       return;
     }
     const notice = keepNotice ? skillsState?.notice : null;
-    skillsState = { cwd, loading: true, notice };
+    const data = skillsState?.cwd === cwd ? skillsState.data : null;
+    skillsState = { cwd, loading: true, data, notice, busyId };
     window.kimi.skillsList({ cwd }).then((data) => {
       if (!isOpen() || activeSection !== 'skills' || skillsState?.cwd !== cwd) return;
-      skillsState = { cwd, loading: false, data, notice };
+      skillsState = {
+        cwd,
+        loading: false,
+        data,
+        notice: successNotice || notice,
+        busyId: null,
+      };
       if (!skillInstallScope) skillInstallScope = data?.projectRoot ? 'project' : 'user';
       if (!data?.projectRoot && skillInstallScope === 'project') skillInstallScope = 'user';
       rerender();
@@ -675,6 +690,8 @@
         loading: false,
         error: error?.message || String(error),
         notice,
+        data,
+        busyId: null,
       };
       rerender();
     });
@@ -819,6 +836,68 @@
     return row;
   }
 
+  function renderSkillResults(host, list) {
+    host.textContent = '';
+    const filtered = window.SkillFilter?.filterSkills
+      ? window.SkillFilter.filterSkills(list, skillSearchQuery)
+      : list;
+    const query = skillSearchQuery.trim();
+
+    if (!list.length) {
+      const empty = el('div', 'skills-empty');
+      empty.append(
+        el('div', 'skills-empty-title', T('settings.skills.empty_title', '추가된 Skills가 없습니다')),
+        el(
+          'div',
+          'skills-empty-desc',
+          T(
+            'settings.skills.empty_desc',
+            'SKILL.md가 있는 폴더나 단일 Markdown Skill을 추가해 보세요.'
+          )
+        )
+      );
+      host.appendChild(empty);
+      return;
+    }
+
+    const summary = el(
+      'div',
+      'skills-results-summary',
+      T('settings.skills.search_count', '전체 T개 중 N개')
+        .replace('N', String(filtered.length))
+        .replace('T', String(list.length)),
+    );
+    summary.setAttribute('role', 'status');
+    summary.setAttribute('aria-live', 'polite');
+    host.appendChild(summary);
+
+    if (!filtered.length) {
+      const empty = el('div', 'skills-empty skills-search-empty');
+      empty.append(
+        el(
+          'div',
+          'skills-empty-title',
+          T('settings.skills.search_empty_title', '일치하는 Skill이 없습니다'),
+        ),
+        el(
+          'div',
+          'skills-empty-desc',
+          T(
+            'settings.skills.search_empty_desc',
+            '이름, 설명 또는 설치 경로로 다시 검색해 보세요.',
+          ),
+        ),
+      );
+      host.appendChild(empty);
+      return;
+    }
+
+    const listEl = el('div', 'skills-list');
+    listEl.dataset.query = query;
+    for (const skill of filtered) listEl.appendChild(renderSkillRow(skill));
+    host.appendChild(listEl);
+  }
+
   function renderSkills(content) {
     content.appendChild(el('h2', 'settings-section-title', T('settings.section.skills', 'Skills')));
     content.appendChild(el(
@@ -883,6 +962,42 @@
     toolbar.append(availability, toolbarActions);
     content.appendChild(toolbar);
 
+    const libraryTools = el('div', 'skills-library-tools');
+    const search = document.createElement('input');
+    search.type = 'search';
+    search.className = 'skills-search-input';
+    search.value = skillSearchQuery;
+    search.placeholder = T(
+      'settings.skills.search_placeholder',
+      '이름, 설명 또는 경로 검색',
+    );
+    search.setAttribute(
+      'aria-label',
+      T('settings.skills.search_aria', '설치된 Skills 검색'),
+    );
+    search.setAttribute('aria-controls', 'skills-results');
+
+    const refreshBtn = el(
+      'button',
+      'btn skills-refresh',
+      skillsState.busyId === 'refresh'
+        ? T('settings.skills.refreshing', '갱신 중…')
+        : T('settings.skills.refresh', '설치 폴더 새로고침'),
+    );
+    refreshBtn.type = 'button';
+    refreshBtn.disabled = !!skillsState.busyId;
+    refreshBtn.addEventListener('click', () => {
+      startSkillsLoad(cwd, {
+        busyId: 'refresh',
+        successNotice: T(
+          'settings.skills.refreshed_notice',
+          '설치된 Skill 폴더를 새로고침했습니다.',
+        ),
+      });
+    });
+    libraryTools.append(search, refreshBtn);
+    content.appendChild(libraryTools);
+
     if (skillsState.notice) {
       const notice = el('div', 'skills-notice', skillsState.notice);
       notice.setAttribute('role', 'status');
@@ -899,25 +1014,14 @@
     }
 
     const list = Array.isArray(skillsState.data?.skills) ? skillsState.data.skills : [];
-    if (!list.length) {
-      const empty = el('div', 'skills-empty');
-      empty.append(
-        el('div', 'skills-empty-title', T('settings.skills.empty_title', '추가된 Skills가 없습니다')),
-        el(
-          'div',
-          'skills-empty-desc',
-          T(
-            'settings.skills.empty_desc',
-            'SKILL.md가 있는 폴더나 단일 Markdown Skill을 추가해 보세요.'
-          )
-        )
-      );
-      content.appendChild(empty);
-    } else {
-      const listEl = el('div', 'skills-list');
-      for (const skill of list) listEl.appendChild(renderSkillRow(skill));
-      content.appendChild(listEl);
-    }
+    const results = el('div', 'skills-results');
+    results.id = 'skills-results';
+    search.addEventListener('input', () => {
+      skillSearchQuery = search.value;
+      renderSkillResults(results, list);
+    });
+    renderSkillResults(results, list);
+    content.appendChild(results);
 
     content.appendChild(el(
       'p',
@@ -1070,6 +1174,7 @@
     backdropEl = null;
     if (focusedSkills) activeSection = 'general';
     focusedSkills = false;
+    skillSearchQuery = '';
   }
 
   function onKeydown(e) {
