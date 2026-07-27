@@ -1,4 +1,4 @@
-# Kimi-GUI [![Version](https://img.shields.io/badge/version-0.6.6-blue)](./package.json) [![Commit Activity](https://img.shields.io/github/commit-activity/m/kaminion/Kimi-GUI)](https://github.com/kaminion/Kimi-GUI/graphs/commit-activity) [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey)](#requirements)
+# Kimi-GUI [![Version](https://img.shields.io/badge/version-0.8.4-blue)](./package.json) [![Commit Activity](https://img.shields.io/github/commit-activity/m/kaminion/Kimi-GUI)](https://github.com/kaminion/Kimi-GUI/graphs/commit-activity) [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey)](#requirements)
 
 [Kimi Code](https://www.kimi.com/code/) | [Usage guide](./docs/kimi-code-made-easier.md) | [GitHub](https://github.com/kaminion/Kimi-GUI) | [한국어](./README.ko.md)
 
@@ -63,9 +63,10 @@ Also cover computers where no Kimi server is already running.
 
 ### Review what changed
 
-The summary above the prompt reports changed files plus added and deleted
-lines. Select it to open the **Changes** tab, inspect each diff, then switch to
-**Activity** in the same right-side panel when you want the execution history.
+The changed-files pill in the prompt options reports file, added-line, and
+deleted-line totals. Select it to choose a file from the popover and open the
+**Changes** tab, then switch to **Activity** in the same right-side panel when
+you want the execution history.
 
 ### Manage Skills and CLI commands
 
@@ -73,6 +74,10 @@ Select **Skills** in the main sidebar to open the focused library. Choose
 **All projects** or **Current project**, then add a folder containing
 `SKILL.md`, add a single Markdown Skill, temporarily disable one without
 losing its files, or move it to the operating system Trash.
+
+Search the installed library by name, description, path, scope, or enabled
+state. **Refresh installed folders** rescans the discovery locations, so edits
+made outside Kimi-GUI appear without reopening the app.
 
 If you would rather describe the workflow than author `SKILL.md` yourself,
 select **Ask Kimi to add one**. Kimi-GUI opens a new conversation with an
@@ -153,23 +158,23 @@ built-in, user, and project Skills as they are discovered.
 ### Agent Skills
 
 The main-sidebar Skills manager follows the discovery locations supported by
-Kimi Code CLI. It can install Skills for **All projects** under
-`~/.config/agents/skills` and for the **Current project** under
-`<project>/.agents/skills`, while also listing compatible Kimi, Claude, Codex,
-and Agents roots. Enable/disable operations preserve each Skill in an adjacent
-disabled directory, and removal uses the system Trash. **Ask Kimi to add one**
-starts a new conversation with the correct destination and authoring
-requirements already filled in.
+Kimi Code CLI. It installs **All projects** Skills under
+`~/.kimi-code/skills` and **Current project** Skills under
+`<project>/.agents/skills`, while also scanning the shared `.agents` roots.
+Search works across metadata and paths, and **Refresh installed folders**
+rescans those locations on demand. Enable/disable operations preserve each
+Skill in an adjacent disabled directory, and removal uses the system Trash.
+**Ask Kimi to add one** starts a new conversation with the correct destination
+and authoring requirements already filled in.
 
 ### Agent activity and usage
 
 File edits are shown as GPT/Codex-style change cards in the conversation, with
-per-file diffs and added/deleted line counts. A compact summary centered
-immediately above the prompt reports the number of changed files and cumulative
-`+`/`-` totals.
-Selecting it opens the single right-side panel on its **Changes** tab; switch to
-**Activity** in the same panel to see current status, tasks, tool activity, and
-touched files.
+per-file diffs and added/deleted line counts. A compact pill in the prompt
+options reports the number of uncommitted changed files and cumulative `+`/`-`
+totals. Selecting it opens a file popover; choosing a file opens the single
+right-side panel on its **Changes** tab. Switch to **Activity** in the same
+panel to see current status, tasks, tool activity, and touched files.
 
 The Usage view combines daily input/output totals, a seven-day chart, rolling
 quota windows, and current-session token counts.

@@ -71,6 +71,10 @@ Select **Skills** in the main sidebar to manage the repeatable instructions
 Kimi Code can load for a task. Choose **All projects** or **Current project**,
 then add a folder containing `SKILL.md` or a single Markdown Skill.
 
+Use the search field to match names, descriptions, install paths, availability,
+and enabled state. **Refresh installed folders** rescans the Kimi Code and
+shared Agents discovery locations while preserving the current search.
+
 Select **Ask Kimi to add one** when you want Kimi to author the Skill. Kimi-GUI
 opens a new conversation with an editable request template that includes the
 selected destination, expected `SKILL.md` structure, safety conditions, and
@@ -80,7 +84,7 @@ Each Skill has an explicit enabled state. Disabling a Skill preserves it on
 disk so you can turn it back on later. Removing a Skill sends it to the
 operating system Trash instead of permanently deleting it.
 
-![The focused Skills manager with an Ask Kimi action and clear availability choices](https://raw.githubusercontent.com/kaminion/Kimi-GUI/main/docs/media/release-0.6.6-skills-main.png)
+![The Skills manager filtered to matching installed Skills after refreshing its discovery folders](https://raw.githubusercontent.com/kaminion/Kimi-GUI/main/docs/media/release-0.8.4-skills-search.png)
 
 Changes are guaranteed to be picked up by new chats. This makes it practical
 to keep a small library of review checklists, release procedures, or
