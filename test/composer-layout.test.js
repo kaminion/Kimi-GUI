@@ -28,7 +28,7 @@ test('changes pill floats above the composer, outside the options row', () => {
   assert.match(html, /id="changes-pill"[^>]*aria-haspopup="true"/);
 
   // Floating popup chrome: anchored above the wrap, centered, shadowed.
-  assert.match(styles, /#changes-pill \{[^}]*position: absolute;[^}]*bottom: calc\(100% \+ 4px\);/s);
+  assert.match(styles, /#changes-pill \{[^}]*position: absolute;[^}]*bottom: calc\(100% \+ 8px\);/s);
   assert.match(styles, /#changes-pill \{[^}]*left: 50%;[^}]*transform: translateX\(-50%\);/s);
   assert.match(styles, /#changes-pill \{[^}]*box-shadow: var\(--shadow-card\);/s);
 });
