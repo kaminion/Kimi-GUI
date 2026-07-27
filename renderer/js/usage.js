@@ -22,6 +22,8 @@
   });
 
   let currentState = null; // last state passed to render(), for event updates
+  const USAGE_REFRESH_DEBOUNCE_MS = 1500; // push-driven profile refetch cadence
+  let profileRefreshTimer = null;
 
   /* ---- small DOM helpers ---- */
 
@@ -435,8 +437,18 @@
       );
       return;
     }
-    // Rendered asynchronously by render(); placeholder until the profile arrives.
-    container.appendChild(el('p', 'usage-empty', T('common.loading', '불러오는 중…')));
+    // Structured skeleton while the profile fetch is in flight — mirrors the
+    // .usage-detail rows it will be replaced by.
+    const skeleton = el('div', 'usage-skeleton');
+    skeleton.setAttribute('role', 'status');
+    skeleton.setAttribute('aria-label', T('common.loading', '불러오는 중…'));
+    for (let i = 0; i < 6; i += 1) {
+      const row = el('div', 'usage-skeleton-row');
+      row.append(el('span', 'usage-skeleton-bar label'), el('span', 'usage-skeleton-bar value'));
+      skeleton.appendChild(row);
+    }
+    skeleton.appendChild(el('div', 'usage-skeleton-block'));
+    container.appendChild(skeleton);
   }
 
   /* ---- public API ---- */
@@ -493,12 +505,58 @@
     if (!usage || sessionId !== currentState?.activeId) return;
     const sessionBox = document.getElementById('session-usage');
     if (!sessionBox) return;
+    // Profile payloads are cumulative (incl. cost/turn count); push payloads
+    // are per-call tokens + context only. Painting a push payload directly
+    // would blank the totals, so pushes refresh just the context block and
+    // arm a debounced profile refetch for the cumulative rows.
+    if (typeof usage.total_cost_usd === 'number' || typeof usage.turn_count === 'number') {
+      paintDetail(sessionBox, usage, true);
+      return;
+    }
+    paintContextOnly(sessionBox, usage);
+    if (profileRefreshTimer) clearTimeout(profileRefreshTimer);
+    profileRefreshTimer = setTimeout(() => {
+      profileRefreshTimer = null;
+      if (sessionId !== currentState?.activeId) return;
+      window.kimi?.getProfile?.(sessionId)
+        .then((profile) => {
+          if (sessionId !== currentState?.activeId || !profile?.usage) return;
+          paintDetail(sessionBox, profile.usage, false);
+        })
+        .catch(() => { /* next push retries */ });
+    }, USAGE_REFRESH_DEBOUNCE_MS);
+  }
+
+  /** Swap the detail in: enter animation only when replacing the placeholder. */
+  function paintDetail(sessionBox, usage, allowEnter) {
     const detail = usageDetail(usage);
     const old = sessionBox.querySelector('.usage-detail');
-    if (old) old.replaceWith(detail);
-    else {
-      sessionBox.querySelector('.usage-empty')?.remove();
-      sessionBox.appendChild(detail);
+    if (old) {
+      old.replaceWith(detail);
+      return;
+    }
+    sessionBox.querySelector('.usage-empty')?.remove();
+    sessionBox.querySelector('.usage-skeleton')?.remove();
+    if (allowEnter) detail.classList.add('usage-detail-enter');
+    sessionBox.appendChild(detail);
+  }
+
+  /** Live context-window numbers from a per-call push payload, in place. */
+  function paintContextOnly(sessionBox, usage) {
+    const ctx = sessionBox.querySelector('.usage-detail .usage-context');
+    if (!ctx) return; // nothing painted yet — the profile fetch owns first paint
+    const limit = Number(usage?.context_limit ?? 0);
+    const used = Number(usage?.context_tokens ?? 0);
+    const value = ctx.querySelector('.usage-card-value');
+    if (value && limit > 0) {
+      value.textContent =
+        `${intFmt.format(used)} / ${intFmt.format(limit)}` +
+        T('common.tokens', ' 토큰') +
+        ` (${Math.round((used / limit) * 100)}%)`;
+    }
+    const fill = ctx.querySelector('.progress-bar > :first-child');
+    if (fill && limit > 0) {
+      fill.style.width = `${Math.max(0, Math.min(100, Math.round((used / limit) * 100)))}%`;
     }
   }
 

@@ -1771,6 +1771,60 @@
   color: var(--text-secondary);
 }
 
+/* Current-session loading skeleton: mirrors the .usage-detail label/value
+   rows it will be replaced by (same rhythm, so the swap does not shift). */
+.usage-skeleton {
+  display: flex;
+  flex-direction: column;
+  pointer-events: none;
+}
+
+.usage-skeleton-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 6px 0;
+}
+
+.usage-skeleton-row + .usage-skeleton-row {
+  border-top: 0.5px solid var(--border);
+}
+
+.usage-skeleton-bar {
+  display: block;
+  height: 11px;
+  background: var(--active-bg);
+  border-radius: var(--radius-s);
+  animation: loading-skeleton-pulse 1.35s var(--ease-in-out) infinite;
+}
+
+.usage-skeleton-bar.label { width: 38%; }
+.usage-skeleton-bar.value { width: 22%; }
+.usage-skeleton-row:nth-child(2n) .usage-skeleton-bar { animation-delay: 80ms; }
+.usage-skeleton-row:nth-child(3n) .usage-skeleton-bar { animation-delay: 160ms; }
+
+.usage-skeleton-block {
+  height: 52px;
+  margin-top: var(--space-3);
+  background: var(--active-bg);
+  border-radius: var(--radius-m);
+  animation: loading-skeleton-pulse 1.35s var(--ease-in-out) infinite;
+}
+
+/* First paint of the real numbers: one gentle settle (live push updates swap
+   the node without this class, so they never flicker). */
+.usage-detail-enter {
+  animation: usage-detail-in 0.18s var(--ease-out);
+}
+
+@keyframes usage-detail-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
 /* ==========================================================================
    Badges / pills (header metadata)
    ========================================================================== */
