@@ -1096,7 +1096,7 @@ button.draft-context-control:hover {
   left: 50%;
   transform: translateX(-50%); /* horizontally centered above the input box */
   bottom: calc(100% + 8px);
-  z-index: 4;
+  z-index: 6; /* above sticky process headers (z-index 3) and transcript text */
   flex: none;
   display: inline-flex;
   align-items: center;
@@ -1116,8 +1116,10 @@ button.draft-context-control:hover {
   user-select: none;
 }
 
+/* The pill floats over the transcript, so the hover state must stay OPAQUE —
+   a translucent hover wash would let the text behind bleed through. */
 #changes-pill:hover {
-  background: var(--hover-bg);
+  background: color-mix(in srgb, var(--surface-raised), var(--text) 7%);
   color: var(--text);
 }
 
