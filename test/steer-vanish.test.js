@@ -1,10 +1,9 @@
 'use strict';
 
 /**
- * live-turn-display.test.js — the live process block must appear as soon as a
- * turn starts (no session round-trip). chat.js runs in a vm DOM stub; the
- * turn.started → thinking.delta → turn.ended sequence is replayed from the
- * wire vocabulary of main/backend.js (direct engine) and the daemon.
+ * steer-vanish.test.js — replay the daemon's steer (run-now) sequence against
+ * chat.js and find where the scheduled message's UI goes. Harness pattern
+ * matches live-turn-display.test.js.
  */
 
 const test = require('node:test');
@@ -14,8 +13,6 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const SRC = fs.readFileSync(path.resolve(__dirname, '..', 'renderer', 'js', 'chat.js'), 'utf8');
-
-/* ---- DOM stub ------------------------------------------------------------ */
 
 function matchesSimple(node, selector) {
   if (!selector.startsWith('.')) return node.tagName === selector.toUpperCase();
@@ -149,7 +146,7 @@ function makeElement(tag) {
   return el;
 }
 
-function makeWorld() {
+function makeWorld({ runScheduledResult } = {}) {
   const byId = {
     transcript: makeElement('div'),
     composer: makeElement('textarea'),
@@ -162,14 +159,20 @@ function makeWorld() {
     addEventListener() {},
   };
   const window = {
-    App: { state: { activeId: 's1', sessions: [{ id: 's1', cwd: '/repo' }] } },
+    App: {
+      state: { activeId: 's1', sessions: [{ id: 's1', cwd: '/repo' }] },
+      runScheduled: async () => runScheduledResult,
+      updateScheduled: async () => null,
+      cancelScheduled: async () => false,
+      scheduleMessage: async () => ({ prompt_id: 'p1', status: 'queued' }),
+    },
     I18N: null,
-    Markdown2: null, // esc fallback path
+    Markdown2: null,
     kimi: {
       getMessagesPage: async () => ({ items: [], hasMore: false }),
       getMessages: async () => [],
     },
-    CustomEvent: null, // emitChangeSnapshot skips dispatch
+    CustomEvent: null,
     dispatchEvent() {},
     addEventListener() {},
   };
@@ -188,38 +191,90 @@ function makeWorld() {
   return { window, byId };
 }
 
-/* ---- tests --------------------------------------------------------------- */
+function userRowTexts(transcript) {
+  return transcript
+    .querySelectorAll('.msg-user-text')
+    .map((n) => n.text());
+}
 
-test('turn.started opens a live process row immediately; deltas stream into it', async () => {
-  const w = makeWorld();
+test('a sent card whose daemon copy has not landed yet survives the resync', async () => {
+  const w = makeWorld({ runScheduledResult: { status: 'steering', prompt_id: 'p1' } });
   const Chat = w.window.Chat;
+  const transcript = w.byId.transcript;
   Chat.init();
   Chat.setActiveSession('s1');
 
-  Chat.applyEvent('s1', { type: 'turn.started', turn_id: 't1' });
-  const transcript = w.byId.transcript;
-  const live = transcript.querySelector('.msg-live');
-  assert.ok(live, 'live row exists right after turn.started');
-  assert.ok(live.querySelector('.msg-process'), 'process block present');
-  assert.equal(live.querySelector('.msg-process').open, false, 'block starts collapsed (header carries the activity)');
-
-  Chat.applyEvent('s1', { type: 'thinking.delta', turn_id: 't1', delta: '구조를 분석하는 중…' });
-  const thinking = live.querySelector('.msg-process-thinking');
-  assert.ok(thinking, 'thinking prose still streams into the block while collapsed');
-
-  Chat.applyEvent('s1', { type: 'assistant.delta', turn_id: 't1', delta: '답변 초안' });
-  assert.ok(live.querySelector('.msg-assistant'), 'answer area present');
-
-  Chat.applyEvent('s1', { type: 'turn.ended', turn_id: 't1', reason: 'completed' });
+  Chat.applyEvent('s1', { type: 'turn.started', turnId: 0 });
+  Chat.applyEvent('s1', { type: 'scheduled.updated', items: [{ prompt_id: 'p1', text: '11부터 세 줘' }] });
+  const card = transcript.querySelector('.msg-steer');
+  const runBtn = card.findAll((n) => n.className === 'msg-steer-action' && n.text() === '바로 실행')[0];
+  runBtn.disabled = false;
+  runBtn.click();
   await new Promise((r) => setTimeout(r, 10));
-  assert.ok(true, 'settle path ran without errors');
+  Chat.applyEvent('s1', { type: 'prompt.steered', activePromptId: 'p0', promptIds: ['p1'] });
+
+  // The turn ends and the resync runs BEFORE the daemon persisted the steered
+  // copy (write lag): history has no '11부터 세 줘' yet.
+  Chat.applyEvent('s1', { type: 'turn.ended', turnId: 0, reason: 'completed' });
+  Chat.applyEvent('s1', { type: 'session.history_compacted' });
+  await new Promise((r) => setTimeout(r, 500));
+
+  assert.ok(transcript.text().includes('11부터 세 줘'),
+    'sent card stays visible while the daemon copy is pending');
+
+  // The copy arrives later: the card settles into a normal user row.
+  w.window.kimi.getMessagesPage = async () => ({
+    items: [
+      { id: 'm2', role: 'user', prompt_id: 'p1', content: [{ type: 'text', text: '11부터 세 줘' }], created_at: '2026-01-01T00:01:00Z' },
+    ],
+    hasMore: false,
+  });
+  Chat.applyEvent('s1', { type: 'session.history_compacted' });
+  await new Promise((r) => setTimeout(r, 500));
+  const rows = transcript.querySelectorAll('.msg-user-text').map((n) => n.text());
+  assert.ok(rows.some((t) => t.includes('11부터 세 줘')), 'message renders as a normal row once persisted');
+  assert.equal(transcript.querySelector('.msg-steer'), null, 'card settled away');
 });
 
-test('unknown session id does not block events while no session is active', () => {
-  const w = makeWorld();
+test('run-now (steer) keeps the scheduled message visible through the turn', async () => {
+  const w = makeWorld({ runScheduledResult: { status: 'steering', prompt_id: 'p1' } });
   const Chat = w.window.Chat;
+  const transcript = w.byId.transcript;
   Chat.init();
-  // Draft: no active session — events for the lazily-created id must pass.
-  Chat.applyEvent('new-id', { type: 'turn.started', turn_id: 't9' });
-  assert.ok(w.byId.transcript.querySelector('.msg-live'), 'live row appears in a fresh draft');
+  Chat.setActiveSession('s1');
+
+  // Busy turn + scheduled card adopted from the queue.
+  Chat.applyEvent('s1', { type: 'turn.started', turnId: 0 });
+  Chat.applyEvent('s1', { type: 'scheduled.updated', items: [{ prompt_id: 'p1', text: '11부터 세 줘' }] });
+  const card = transcript.querySelector('.msg-steer');
+  assert.ok(card, 'scheduled card visible before steer');
+
+  // User clicks run-now: the card's run button fires app.runScheduled.
+  const runBtn = card.findAll((n) => n.className === 'msg-steer-action' && n.text() === '바로 실행')[0];
+  assert.ok(runBtn, 'run button present');
+  runBtn.disabled = false;
+  runBtn.click();
+  await new Promise((r) => setTimeout(r, 10));
+
+  // Daemon follows with prompt.steered, the queue update, and the turn end.
+  Chat.applyEvent('s1', { type: 'prompt.steered', activePromptId: 'p0', promptIds: ['p1'] });
+  Chat.applyEvent('s1', { type: 'scheduled.updated', items: [], departed: [{ prompt_id: 'p1', reason: 'steered' }] });
+  Chat.applyEvent('s1', { type: 'turn.ended', turnId: 0, reason: 'completed' });
+  await new Promise((r) => setTimeout(r, 10));
+
+  // The steered message lands in history via the resync (daemon persists its copy).
+  w.window.kimi.getMessagesPage = async () => ({
+    items: [
+      { id: 'm1', role: 'user', content: [{ type: 'text', text: '첫 질문' }], created_at: '2026-01-01T00:00:00Z' },
+      { id: 'm2', role: 'user', prompt_id: 'p1', content: [{ type: 'text', text: '11부터 세 줘' }], created_at: '2026-01-01T00:01:00Z' },
+      { id: 'm3', role: 'assistant', content: [{ type: 'text', text: '11, 12, 13.' }], created_at: '2026-01-01T00:02:00Z' },
+    ],
+    hasMore: false,
+  });
+  Chat.applyEvent('s1', { type: 'session.history_compacted' }); // forces scheduleReload
+  await new Promise((r) => setTimeout(r, 400));
+
+  const texts = userRowTexts(transcript);
+  assert.ok(texts.some((t) => t.includes('11부터 세 줘')), 'steered message visible after resync, got: ' + JSON.stringify(texts));
+  assert.ok(transcript.text().includes('11, 12, 13.'), 'assistant answer visible');
 });

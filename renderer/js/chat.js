@@ -1401,8 +1401,14 @@
           historyHasMore = !!page?.hasMore;
           optimisticUser = null;
           messages = sortByTime(list.map(normMessage).filter((m) => !isMachineMessage(m)));
-          // Run-now cards settle here: history now carries their message.
-          scheduledCards = scheduledCards.filter((card) => SCHEDULED_HIDE_STATUSES.has(card.status));
+          // Run-now cards settle here ONLY once history carries their message;
+          // a sent card whose daemon copy has not landed yet stays, so the
+          // steered message never vanishes between resync and arrival.
+          scheduledCards = scheduledCards.filter((card) => {
+            if (SCHEDULED_HIDE_STATUSES.has(card.status)) return true;
+            if (card.status !== 'sent') return false;
+            return !messages.some((m) => m.role === 'user' && textOfMessage(m) === card.text);
+          });
           reconcileConsumedEchoes();
           fullRedraw();
           maybeScroll();
