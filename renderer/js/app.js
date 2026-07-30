@@ -90,6 +90,10 @@
     async selectSession(id) {
       const requestId = ++sessionSelectionRequest;
       App.state.activeId = id;
+      // Point chat.js at the new session immediately: until the paged load
+      // lands, events from the PREVIOUS session would otherwise still pass
+      // chat.js's filter and render (or resync) into the new session's view.
+      window.Chat?.setActiveSession?.(id);
       App.showView('chat');
       window.Sidebar?.render?.(App.state);
       const session = App.state.sessions.find((s) => s.id === id);

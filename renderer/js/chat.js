@@ -1390,13 +1390,17 @@
   function scheduleReload() {
     if (reloadTimer || !activeSessionId) return;
     if (!window.kimi || typeof window.kimi.getMessages !== 'function') return;
+    const reloadSessionId = activeSessionId;
     reloadTimer = setTimeout(async () => {
       reloadTimer = null;
       try {
         const page = typeof window.kimi.getMessagesPage === 'function'
-          ? await window.kimi.getMessagesPage(activeSessionId)
-          : { items: await window.kimi.getMessages(activeSessionId), hasMore: false };
+          ? await window.kimi.getMessagesPage(reloadSessionId)
+          : { items: await window.kimi.getMessages(reloadSessionId), hasMore: false };
         const list = page?.items;
+        // The user switched sessions while the resync was in flight: drop it —
+        // the new session's own load owns the transcript now.
+        if (reloadSessionId !== activeSessionId) return;
         if (Array.isArray(list)) {
           historyHasMore = !!page?.hasMore;
           optimisticUser = null;
